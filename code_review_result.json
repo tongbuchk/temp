@@ -1,0 +1,98 @@
+[
+  {
+    "title": "严重性能问题：使用.Result阻塞异步调用导致死锁风险",
+    "description": "在FollowUpHandler.cs第417行和FollowUpServer.cs第750行，使用Task.Run().Result阻塞异步调用。这会导致线程阻塞，在高并发场景下可能引发死锁，严重影响生产环境性能。违反了TuiGroup团队规范中'禁止使用.Result调用异步方法'的规定。",
+    "severity": "critical",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpHandler.cs",
+    "line": 417,
+    "suggestion": "将同步方法改为异步方法，使用await替代.Result：\n```csharp\n// 错误：\nvar riskList = Task.Run(async () => await FollowUpServer.RunDelayRiskCheck(1,0)).Result;\n\n// 正确：\npublic static async Task<CardListResponse> GetCardList(...)\n{\n    var riskList = await FollowUpServer.RunDelayRiskCheck(1, 0);\n    // ...\n}\n```"
+  },
+  {
+    "title": "严重性能问题：使用.Result阻塞异步调用（第二处）",
+    "description": "在FollowUpServer.cs第750行，ResetWorkInfoCache方法中同样使用.Result阻塞异步调用。这会导致调用线程阻塞，在高负载情况下可能引发502错误。",
+    "severity": "critical",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 750,
+    "suggestion": "将ResetWorkInfoCache方法改为异步方法，并在调用处使用await：\n```csharp\n// 错误：\nvar riskList = Task.Run(async () => await RunDelayRiskCheck(1, workId)).Result;\n\n// 正确：\npublic static async Task<List<TrelloLikeCard>> ResetWorkInfoCache(...)\n{\n    var riskList = await RunDelayRiskCheck(1, workId);\n    // ...\n}\n```"
+  },
+  {
+    "title": "SQL注入风险：字符串拼接SQL查询",
+    "description": "在FollowUpServer.cs的RunDelayRiskCheck方法中（约第1890-1920行），使用字符串拼接构建SQL查询，虽然使用了参数化查询的部分参数，但SQL结构本身通过字符串拼接，存在潜在安全风险。",
+    "severity": "high",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 1890,
+    "suggestion": "使用完全参数化的SQL查询，避免字符串拼接：\n```csharp\n// 当前代码使用了字符串拼接：\nvar sql = $@\"... {(specifyWorkId > 0 ? \"AND wm.id = @specifyWorkId\" : \"\")} ...\";\n\n// 建议改为：\nvar sql = @\"... AND (@specifyWorkId = 0 OR wm.id = @specifyWorkId) ...\";\nvar taskRisks = Db.tui_base.List<TaskDelayRiskModel>(sql, new { specifyWorkId = specifyWorkId > 0 ? specifyWorkId : 0 });\n```"
+  },
+  {
+    "title": "未使用的using引用：增加编译开销",
+    "description": "在FollowUpServer.cs文件开头添加了未使用的using引用：Org.BouncyCastle.Ocsp和TencentCloud.Tci.V20190318.Models。这些未使用的引用会增加编译时间和命名空间污染。",
+    "severity": "low",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 1,
+    "suggestion": "删除未使用的using引用：\n```csharp\n// 删除这两行：\nusing Org.BouncyCastle.Ocsp;\nusing TencentCloud.Tci.V20190318.Models;\n```"
+  },
+  {
+    "title": "性能问题：RunDelayRiskCheck方法中循环调用异步API",
+    "description": "在RunDelayRiskCheck方法中，对每个任务调用WorkingDaysCalculator.GetWorkingDaysBetween，该方法内部循环调用IsTodayWorkingDay（异步API）。如果任务数量较多，会产生大量串行的异步调用，严重影响性能。",
+    "severity": "high",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 1940,
+    "suggestion": "考虑批量处理或缓存工作日计算结果，避免重复计算相同日期范围的工作日。对于相同日期范围的任务，可以复用计算结果。\n```csharp\n// 建议：缓存工作日计算结果\nprivate static readonly ConcurrentDictionary<string, int> _workingDaysCache = new();\n\nvar cacheKey = $\"{today.Date:yyyyMMdd}_{expectedTestTime.Date:yyyyMMdd}\";\nif (!_workingDaysCache.TryGetValue(cacheKey, out workingDays))\n{\n    workingDays = await WorkingDaysCalculator.GetWorkingDaysBetween(today.Date, expectedTestTime.Date);\n    _workingDaysCache.TryAdd(cacheKey, workingDays);\n}\n```"
+  },
+  {
+    "title": "异常处理不完善：AutoFormatCorrect方法缺少超时处理",
+    "description": "在LanguageHelper.cs的AutoFormatCorrect方法中，虽然设置了HttpClient的Timeout为300秒，但异常处理不够完善。如果API调用失败，可能导致翻译流程中断。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/Language/Helper/LanguageHelper.cs",
+    "line": 1140,
+    "suggestion": "增强异常处理，确保API调用失败时不影响主流程：\n```csharp\nusing var client = new HttpClient { Timeout = TimeSpan.FromSeconds(300) };\ntry\n{\n    var response = await client.PostAsync(requestUrl, new StringContent(jsonBody, Encoding.UTF8, \"application/json\"));\n    response.EnsureSuccessStatusCode();\n    var taskResultMsg = await response.Content.ReadAsStringAsync();\n    // ...\n}\ncatch (TaskCanceledException ex) when (ex.InnerException is TimeoutException)\n{\n    Env.Logger.Error($\"自动格式校正超时: {ex.Message}\");\n    return newDic; // 返回原始字典，不中断流程\n}\ncatch (Exception ex)\n{\n    Env.Logger.Error($\"自动格式校正失败: {ex.Message}\");\n    return newDic; // 返回原始字典，不中断流程\n}\n```"
+  },
+  {
+    "title": "硬编码值：ZendeskHelper中的限流配置",
+    "description": "在ZendeskHelper.cs的ExecZendeskCommentWorkFlow方法中，PerMinuteZendeskApiLimitMax使用了硬编码的常量值。根据TuiGroup规范，应该使用配置项或常量定义。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/Zendesk/ZendeskHelper.cs",
+    "line": 260,
+    "suggestion": "将硬编码的限流值提取为配置项或常量：\n```csharp\n// 在类顶部定义常量\nprivate const int PerMinuteZendeskApiLimitMax = 100; // 或从配置读取\n\n// 或从配置文件读取：\nprivate static int PerMinuteZendeskApiLimitMax => \n    int.Parse(ConfigurationManager.AppSettings[\"PerMinuteZendeskApiLimitMax\"] ?? \"100\");\n```"
+  },
+  {
+    "title": "代码逻辑问题：ZendeskHandler中条件判断可能错误",
+    "description": "在ZendeskHandler.cs第2115行，将条件从`lastComments.Count >= 3`改为`lastComments.Count < 3`，这个逻辑反转可能导致业务逻辑错误。需要确认这是否是预期的变更。",
+    "severity": "high",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/Zendesk/ZendeskHandler.cs",
+    "line": 2115,
+    "suggestion": "确认逻辑变更是否正确。如果原逻辑是\"当评论数>=3时添加工单内容\"，改为<3后行为完全相反。建议添加注释说明变更原因：\n```csharp\n// 修改原因：当评论数少于3条时，补充工单原始内容以提供更多上下文\nif (lastComments.Count < 3)\n{\n    var ticketContent = string.IsNullOrEmpty(ticket.EmailContentCn) ? ticket.Content : ticket.EmailContentCn;\n    allComments.Add(ticketContent);\n}\n```"
+  },
+  {
+    "title": "防御性编程缺失：UpdateStepProcessStage缺少参数验证",
+    "description": "在FollowUpHandler.cs的UpdateStepProcessStage方法中，虽然验证了ProcessStage的值，但没有验证StepId的有效性。如果传入无效的StepId，可能导致更新失败但无明确错误提示。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpHandler.cs",
+    "line": 860,
+    "suggestion": "添加StepId有效性验证：\n```csharp\npublic static void UpdateStepProcessStage(UpdateStepProcessStageReq req)\n{\n    if (req.ProcessStage != 1 && req.ProcessStage != 2)\n    {\n        throw new ApiException(-1, \"不存在的处理阶段，请检查\");\n    }\n    \n    // 验证StepId是否存在\n    var stepExists = Db.tui_base.Get<int>(\"SELECT COUNT(1) FROM work_manager_step WHERE id = @StepId\", new { req.StepId }) > 0;\n    if (!stepExists)\n    {\n        throw new ApiException(-1, $\"步骤ID {req.StepId} 不存在\");\n    }\n    \n    var sql = \"update work_manager_step set process_stage = @ProcessStage where id = @StepId\";\n    Db.tui_base.Execute(sql, req);\n    // ...\n}\n```"
+  },
+  {
+    "title": "性能优化机会：GetCardList中重复调用RunDelayRiskCheck",
+    "description": "在GetCardList方法中，对每个Work都检查riskList.Contains，但riskList是通过调用RunDelayRiskCheck获取的。如果GetCardList被频繁调用，可能导致重复执行耗时的风险检查。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpHandler.cs",
+    "line": 417,
+    "suggestion": "考虑缓存风险检查结果，避免在短时间内重复执行：\n```csharp\n// 使用内存缓存，5分钟过期\nprivate static readonly MemoryCache _riskListCache = new MemoryCache(new MemoryCacheOptions());\n\nvar cacheKey = \"DelayRiskCheck_All\";\nif (!_riskListCache.TryGetValue(cacheKey, out List<int> riskList))\n{\n    riskList = await FollowUpServer.RunDelayRiskCheck(1, 0);\n    _riskListCache.Set(cacheKey, riskList, TimeSpan.FromMinutes(5));\n}\n```"
+  },
+  {
+    "title": "代码规范：ZendeskHelper中返回类型变更可能影响调用方",
+    "description": "ZendeskHelper.ExecZendeskCommentWorkFlow方法的返回类型从ZendeskCommentWorkFlowResult改为ZendeskCommentWorkFlowResp。需要确认所有调用方都已更新，否则会导致编译错误或运行时异常。",
+    "severity": "high",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/Zendesk/ZendeskHelper.cs",
+    "line": 256,
+    "suggestion": "检查所有调用ExecZendeskCommentWorkFlow的地方，确保正确处理新的返回类型。在ZendeskHandler.cs第2180行已更新为访问flowResult.Result.ErrorMessage，但需要全局搜索确保没有遗漏：\n```csharp\n// 使用grep搜索所有调用处：\n// ExecZendeskCommentWorkFlow\n```"
+  },
+  {
+    "title": "异常处理：RunDelayRiskCheck中异常被吞没",
+    "description": "在RunDelayRiskCheck方法中，虽然捕获了异常并记录了日志，但返回null。调用方可能无法区分是'无风险任务'还是'检查失败'。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 1857,
+    "suggestion": "区分正常返回（无风险）和异常情况：\n```csharp\n// 返回空列表表示无风险，抛出异常表示检查失败\n// 或者在返回类型中增加状态标识\npublic static async Task<(List<int> RiskWorkIds, bool IsSuccess)> RunDelayRiskCheck(...)\n{\n    try\n    {\n        // ...\n        return (res, true);\n    }\n    catch (Exception ex)\n    {\n        Env.Logger.Error($\"延期提测风险检查异常: {ex.Message}\\n{ex.StackTrace}\");\n        throw; // 或者返回 (null, false)\n    }\n}\n```"
+  }
+]
