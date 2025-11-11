@@ -1,0 +1,98 @@
+[
+  {
+    "title": "严重性能问题：使用.Result阻塞异步调用",
+    "description": "在FollowUpHandler.cs第417行和FollowUpServer.cs第750行，使用Task.Run().Result阻塞异步调用，这会导致线程阻塞、死锁风险，并可能导致502错误。根据TuiGroup规范，严格禁止使用.Result调用异步方法。",
+    "severity": "critical",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpHandler.cs",
+    "line": 417,
+    "suggestion": "将GetCardList方法改为async Task，使用await调用：var riskList = await FollowUpServer.RunDelayRiskCheck(1, 0); 同时需要修改调用链，确保所有调用者都支持异步。"
+  },
+  {
+    "title": "严重性能问题：使用.Result阻塞异步调用",
+    "description": "在FollowUpServer.cs第750行，使用Task.Run().Result阻塞异步调用，这会导致线程阻塞、死锁风险，并可能导致502错误。根据TuiGroup规范，严格禁止使用.Result调用异步方法。",
+    "severity": "critical",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 750,
+    "suggestion": "将ResetWorkInfoCache方法改为async Task，使用await调用：var riskList = await RunDelayRiskCheck(1, workId); 同时需要修改调用链，确保所有调用者都支持异步。"
+  },
+  {
+    "title": "异常处理问题：Fire and Forget模式导致异常被吞没",
+    "description": "在FollowUpHandler.cs的UpdateWorkExpectedTestTime方法中，使用`_ = MySocketHelper.NoticeAll(...)`这种Fire and Forget模式，异常会被吞没，无法追踪。根据TuiGroup规范，禁止使用`_ =`忽略异步调用。",
+    "severity": "high",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpHandler.cs",
+    "line": 797,
+    "suggestion": "应该使用try-catch包裹并记录日志，或者使用Task.Run处理后台任务：Task.Run(async () => { try { await MySocketHelper.NoticeAll(...); } catch (Exception ex) { Logger.Error(ex, \"Socket推送失败\"); } });"
+  },
+  {
+    "title": "性能问题：复杂SQL查询可能导致性能瓶颈",
+    "description": "RunDelayRiskCheck方法中的SQL查询非常复杂，包含多个JOIN、子查询和GROUP BY操作。如果数据量大，可能导致查询性能问题。需要检查是否有合适的索引。",
+    "severity": "high",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 1860,
+    "suggestion": "1. 检查相关表的索引是否完善（work_manager、work_manager_step、work_manager_step_checklist等）；2. 考虑添加查询超时设置；3. 如果数据量很大，考虑分批处理或添加缓存；4. 监控该查询的执行时间。"
+  },
+  {
+    "title": "性能问题：循环中调用异步方法可能导致性能问题",
+    "description": "在GetWorkingDaysBetween方法中，使用while循环逐天调用IsTodayWorkingDay异步方法。如果日期跨度大，会产生大量异步调用，可能导致性能问题。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Util/WorkingDaysCalculator.cs",
+    "line": 78,
+    "suggestion": "考虑批量获取工作日信息，或者缓存节假日数据，减少API调用次数。如果必须逐天调用，建议添加并发控制或批量处理。"
+  },
+  {
+    "title": "硬编码问题：魔法数字应使用常量",
+    "description": "代码中存在多处硬编码的魔法数字：cpuUsage = 85、CpuUsage = 100、availableHoursPerPerson = workingDays * 7、步骤配置ID (2,3,4,5,6,7)等。根据TuiGroup规范，禁止硬编码，应使用常量。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/CentralControl/CentralControlHandler.cs",
+    "line": 719,
+    "suggestion": "定义常量：private const int CPU_USAGE_THRESHOLD = 85; private const int CPU_USAGE_CRITICAL = 100; private const int HOURS_PER_DAY = 7; private static readonly int[] STEP_CONFIG_IDS = {2, 3, 4, 5, 6, 7};"
+  },
+  {
+    "title": "硬编码问题：步骤配置ID硬编码",
+    "description": "在RunDelayRiskCheck方法的SQL中，步骤配置ID (2,3,4,5,6,7) 硬编码在SQL中，应该使用常量或配置。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 1900,
+    "suggestion": "定义常量：private static readonly int[] PRE_TEST_STEP_CONFIG_IDS = {2, 3, 4, 5, 6, 7}; 然后在SQL中使用参数化查询或动态构建IN子句。"
+  },
+  {
+    "title": "防御性编程：缺少参数验证",
+    "description": "UpdateStepProcessStage方法中，虽然检查了ProcessStage的值（1或2），但没有检查StepId是否有效，也没有验证当前用户是否有权限修改该步骤。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpHandler.cs",
+    "line": 860,
+    "suggestion": "添加参数验证：1. 检查StepId是否存在；2. 验证当前用户是否有权限修改该步骤；3. 如果验证失败，抛出ApiException并记录日志。"
+  },
+  {
+    "title": "代码质量问题：未使用的using语句",
+    "description": "FollowUpServer.cs中添加了`using TencentCloud.Tci.V20190318.Models;`和`using Org.BouncyCastle.Ocsp;`，但代码中似乎没有使用这些命名空间。",
+    "severity": "low",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 1,
+    "suggestion": "移除未使用的using语句，保持代码整洁。"
+  },
+  {
+    "title": "异常处理：工作日计算异常处理不够完善",
+    "description": "在RunDelayRiskCheck方法中，工作日计算失败时使用了粗略估算（days - (days / 7 * 2)），这可能不准确。应该记录更详细的错误信息，并考虑使用更可靠的备用方案。",
+    "severity": "low",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 1940,
+    "suggestion": "改进异常处理：1. 记录更详细的错误信息（包括任务ID、日期范围等）；2. 考虑使用更准确的备用计算方式；3. 如果计算失败，可以考虑跳过该任务或发送告警。"
+  },
+  {
+    "title": "代码规范：SQL字符串拼接存在潜在风险",
+    "description": "在CentralControlHandler.cs中，虽然使用了参数化查询，但ipList和serverList是通过字符串拼接构建的，虽然值来自配置，但仍建议使用参数化查询更安全。",
+    "severity": "low",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/CentralControl/CentralControlHandler.cs",
+    "line": 722,
+    "suggestion": "如果可能，考虑使用参数化查询的IN子句，或者至少确保RestartServerList和monitorSpecifyServerList的值经过严格验证，防止SQL注入。"
+  },
+  {
+    "title": "性能优化：多次数据库查询可以合并",
+    "description": "在RunDelayRiskCheck方法中，如果specifyWorkId > 0，只查询单个任务，但整个方法仍然会遍历所有任务组。对于单个任务的情况，可以优化查询逻辑。",
+    "severity": "low",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 1920,
+    "suggestion": "对于specifyWorkId > 0的情况，可以考虑提前返回，避免不必要的分组和循环处理。"
+  }
+]
