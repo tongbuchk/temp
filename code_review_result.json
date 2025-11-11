@@ -1,0 +1,66 @@
+[
+  {
+    "title": "异步方法调用未等待，违反Fire and Forget禁止规范",
+    "description": "在事务提交后，代码中调用了 AppStoreConnectAPIService.GetLocalPrice 和 GooglePlayService.GetLocalPrice，这些很可能是异步方法，但代码中没有使用 await 等待。这违反了TuiGroup规范中'禁止使用 _ = 忽略异步调用'的要求，可能导致：1) 异常被吞没无法追踪；2) 操作失败无感知；3) 在事务提交后立即返回，本地价格创建可能未完成。",
+    "severity": "critical",
+    "file": "Tongbu.Tui.Inner.Abroad/Handler/InnerHandler.cs",
+    "line": 957,
+    "suggestion": "如果 GetLocalPrice 是异步方法，应该使用 await 等待：\n```csharp\nif (createAppleLocalPriceList.Count > 0)\n{\n    var tasks = createAppleLocalPriceList.Select(item => \n        AppStoreConnectAPIService.GetLocalPrice(req.AppGroup, item));\n    await Task.WhenAll(tasks).ConfigureAwait(false);\n}\n```\n如果是同步方法，需要添加异常处理。如果确实需要后台执行，应使用 Task.Run 并处理异常：\n```csharp\nTask.Run(async () => {\n    try {\n        await AppStoreConnectAPIService.GetLocalPrice(req.AppGroup, item);\n    } catch (Exception ex) {\n        Logger.Error(ex, \"创建Apple本地价格失败: {AppGroup}, {SubscriptionGroup}\", req.AppGroup, item);\n    }\n});\n```"
+  },
+  {
+    "title": "异步调用缺少异常处理",
+    "description": "GetLocalPrice 方法调用没有异常处理。如果这些方法失败，异常会向上抛出，可能导致整个操作失败。由于这些调用在事务提交之后，即使失败也不应该影响主流程，但需要记录日志以便排查问题。",
+    "severity": "high",
+    "file": "Tongbu.Tui.Inner.Abroad/Handler/InnerHandler.cs",
+    "line": 957,
+    "suggestion": "为所有 GetLocalPrice 调用添加异常处理：\n```csharp\nif (createAppleLocalPriceList.Count > 0)\n{\n    foreach (var item in createAppleLocalPriceList)\n    {\n        try\n        {\n            await AppStoreConnectAPIService.GetLocalPrice(req.AppGroup, item).ConfigureAwait(false);\n        }\n        catch (Exception ex)\n        {\n            Logger.Error(ex, \"创建Apple本地价格失败: AppGroup={AppGroup}, SubscriptionGroup={SubscriptionGroup}\", req.AppGroup, item);\n        }\n    }\n}\n```"
+  },
+  {
+    "title": "使用BizException而非推荐的ApiException",
+    "description": "代码第415-417行使用了 BizException，但根据TuiGroup团队规范，新接口应统一使用 ApiException（会记录日志+钉钉通知）。BizException 仅在确定不需要日志和钉钉时使用。",
+    "severity": "medium",
+    "file": "Tongbu.Tui.Inner.Abroad/Handler/InnerHandler.cs",
+    "line": 415,
+    "suggestion": "将 BizException 替换为 ApiException：\n```csharp\nif (req.Type >= 1 && string.IsNullOrEmpty(req.MonthPkg.CouponAppleProductId))\n    throw new ApiException(400, \"[月卡]未需配置基础套餐的折扣商品id\");\nif (req.Type >= 1 && string.IsNullOrEmpty(req.QuarterPkg.CouponAppleProductId))\n    throw new ApiException(400, \"[季卡]未需配置基础套餐的折扣商品id\");\nif (req.Type >= 1 && string.IsNullOrEmpty(req.YearPkg.CouponAppleProductId))\n    throw new ApiException(400, \"[年卡]未需配置基础套餐的折扣商品id\");\n```"
+  },
+  {
+    "title": "多次枚举同一集合，存在性能问题",
+    "description": "代码第422-430行对 list 集合进行了5次独立的 LINQ 查询（Where + Max），每次都会重新枚举整个集合。如果 list 集合较大，这会导致不必要的性能开销。",
+    "severity": "medium",
+    "file": "Tongbu.Tui.Inner.Abroad/Handler/InnerHandler.cs",
+    "line": 422,
+    "suggestion": "优化为单次遍历或缓存结果：\n```csharp\nvar list = AbroadPkgHelper.GetActivePkgList(req.AppGroup).ToList(); // 缓存枚举结果\nvar activityMaxCouponKind = list.Where(s => s.IsActivity).Select(s => s.CouponKind).DefaultIfEmpty(0).Max();\nvar mornalMaxCouponKind = list.Where(s => s.CouponKind >= 1000 && s.CouponKind < 2000).Select(s => s.CouponKind).DefaultIfEmpty(0).Max();\nvar couponMaxCouponKind = list.Where(s => s.CouponKind >= 2000 && s.CouponKind < 3000).Select(s => s.CouponKind).DefaultIfEmpty(0).Max();\nvar trialMaxCouponKind = list.Where(s => s.CouponKind >= 3000 && s.CouponKind < 4000).Select(s => s.CouponKind).DefaultIfEmpty(0).Max();\nvar trialBMaxCouponKind = list.Where(s => s.CouponKind >= 4000 && s.CouponKind < 5000).Select(s => s.CouponKind).DefaultIfEmpty(0).Max();\n```\n或者使用单次遍历：\n```csharp\nint? activityMaxCouponKind = null, mornalMaxCouponKind = null, couponMaxCouponKind = null, trialMaxCouponKind = null, trialBMaxCouponKind = null;\nforeach (var item in list)\n{\n    if (item.IsActivity) activityMaxCouponKind = Math.Max(activityMaxCouponKind ?? 0, item.CouponKind);\n    if (item.CouponKind >= 1000 && item.CouponKind < 2000) mornalMaxCouponKind = Math.Max(mornalMaxCouponKind ?? 0, item.CouponKind);\n    if (item.CouponKind >= 2000 && item.CouponKind < 3000) couponMaxCouponKind = Math.Max(couponMaxCouponKind ?? 0, item.CouponKind);\n    if (item.CouponKind >= 3000 && item.CouponKind < 4000) trialMaxCouponKind = Math.Max(trialMaxCouponKind ?? 0, item.CouponKind);\n    if (item.CouponKind >= 4000 && item.CouponKind < 5000) trialBMaxCouponKind = Math.Max(trialBMaxCouponKind ?? 0, item.CouponKind);\n}\n```"
+  },
+  {
+    "title": "Google本地价格创建可以优化为并行执行",
+    "description": "代码第965-1007行创建了三个字典（Month、Quarter、Year），然后分别循环调用 GetLocalPrice。如果这些是异步方法，应该使用 Task.WhenAll 并行执行以提高性能。即使是同步方法，也可以考虑批量处理优化。",
+    "severity": "medium",
+    "file": "Tongbu.Tui.Inner.Abroad/Handler/InnerHandler.cs",
+    "line": 965,
+    "suggestion": "优化为并行执行和统一处理：\n```csharp\nvar googleLocalPriceTasks = new List<Task>();\n\n// 收集所有需要创建的Google本地价格\nvar googlePriceItems = new List<(string OfferId, string ProductId)>();\nif (!string.IsNullOrEmpty(req.MonthPkg.ActivityOfferId)) googlePriceItems.Add((req.MonthPkg.ActivityOfferId, req.MonthPkg.GoogleProductId));\nif (!string.IsNullOrEmpty(req.MonthPkg.CouponOfferId)) googlePriceItems.Add((req.MonthPkg.CouponOfferId, req.MonthPkg.GoogleProductId));\nif (!string.IsNullOrEmpty(req.MonthPkg.TrialOfferId)) googlePriceItems.Add((req.MonthPkg.TrialOfferId, req.MonthPkg.GoogleProductId));\nif (!string.IsNullOrEmpty(req.MonthPkg.TrialBOfferId)) googlePriceItems.Add((req.MonthPkg.TrialBOfferId, req.MonthPkg.GoogleProductId));\n// ... 类似处理 Quarter 和 Year\n\n// 并行执行\nif (googlePriceItems.Count > 0)\n{\n    var tasks = googlePriceItems.Select(item => \n        GooglePlayService.GetLocalPrice(req.AppGroup, item.ProductId, item.OfferId)\n            .ContinueWith(t => {\n                if (t.IsFaulted)\n                    Logger.Error(t.Exception, \"创建Google本地价格失败: AppGroup={AppGroup}, ProductId={ProductId}, OfferId={OfferId}\", req.AppGroup, item.ProductId, item.OfferId);\n            }));\n    await Task.WhenAll(tasks).ConfigureAwait(false);\n}\n```"
+  },
+  {
+    "title": "硬编码的魔法数字应提取为常量",
+    "description": "代码中使用了多个硬编码的数字（1000, 2000, 3000, 4000, 5000）来区分不同类型的 CouponKind 范围。这些魔法数字降低了代码可读性，且违反了TuiGroup规范中'硬编码禁止'的要求。",
+    "severity": "low",
+    "file": "Tongbu.Tui.Inner.Abroad/Handler/InnerHandler.cs",
+    "line": 424,
+    "suggestion": "提取为常量：\n```csharp\nprivate const int COUPON_KIND_NORMAL_MIN = 1000;\nprivate const int COUPON_KIND_NORMAL_MAX = 2000;\nprivate const int COUPON_KIND_COUPON_MIN = 2000;\nprivate const int COUPON_KIND_COUPON_MAX = 3000;\nprivate const int COUPON_KIND_TRIAL_MIN = 3000;\nprivate const int COUPON_KIND_TRIAL_MAX = 4000;\nprivate const int COUPON_KIND_TRIAL_B_MIN = 4000;\nprivate const int COUPON_KIND_TRIAL_B_MAX = 5000;\n\n// 使用时：\nvar mornalMaxCouponKind = list.Where(s => s.CouponKind >= COUPON_KIND_NORMAL_MIN && s.CouponKind < COUPON_KIND_NORMAL_MAX).Max(s => s.CouponKind);\n```"
+  },
+  {
+    "title": "字符串Substring操作可以优化",
+    "description": "代码中多处使用 `sub.value.Substring(idx + 1)` 来提取字符串。如果 idx 为 -1（未找到），IndexOf 会返回 -1，但代码已经检查了 `idx >= 0`，这部分逻辑是正确的。但可以考虑使用更现代的字符串操作方法。",
+    "severity": "low",
+    "file": "Tongbu.Tui.Inner.Abroad/Handler/InnerHandler.cs",
+    "line": 682,
+    "suggestion": "可以考虑使用更清晰的字符串处理方式，但当前实现已经足够安全。如果 value 可能为 null，需要添加空值检查。"
+  },
+  {
+    "title": "空集合检查可以优化",
+    "description": "代码第965行和后续多处使用了 `if (createGoogleLocalPriceDicMonth.Count > 0)` 来检查集合是否为空。对于字典，直接检查 `Count > 0` 是合理的，但可以考虑使用 `Any()` 方法（虽然对于字典来说性能差异不大）。",
+    "severity": "info",
+    "file": "Tongbu.Tui.Inner.Abroad/Handler/InnerHandler.cs",
+    "line": 965,
+    "suggestion": "当前实现已经足够高效。字典的 Count 属性是 O(1) 操作，无需优化。"
+  }
+]
