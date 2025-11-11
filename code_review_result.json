@@ -1,0 +1,130 @@
+[
+  {
+    "title": "严重性能问题：使用.Result阻塞异步调用",
+    "description": "在FollowUpHandler.cs第417行和FollowUpServer.cs第750行使用了Task.Run(async () => await ...).Result模式，这会导致线程阻塞和死锁风险。根据TuiGroup规范，严格禁止使用.Result调用异步方法，会导致502错误。",
+    "severity": "critical",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpHandler.cs",
+    "line": 417,
+    "suggestion": "将GetCardList方法改为async Task，直接使用await：var riskList = await FollowUpServer.RunDelayRiskCheck(1, 0); 同时需要将调用链上所有方法改为async。"
+  },
+  {
+    "title": "严重性能问题：使用.Result阻塞异步调用",
+    "description": "在FollowUpServer.cs第750行的ResetWorkInfoCache方法中使用了Task.Run(async () => await RunDelayRiskCheck(1, workId)).Result，这会导致线程阻塞和死锁风险。",
+    "severity": "critical",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 750,
+    "suggestion": "将ResetWorkInfoCache方法改为async Task，直接使用await：var riskList = await RunDelayRiskCheck(1, workId); 同时需要将调用链上所有方法改为async。"
+  },
+  {
+    "title": "Fire and Forget模式导致异常被吞没",
+    "description": "在FollowUpHandler.cs第800行使用了_ = MySocketHelper.NoticeAll(...)，这是Fire and Forget模式，异常会被吞没，无法追踪。根据TuiGroup规范，禁止使用_ = 忽略异步调用。",
+    "severity": "high",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpHandler.cs",
+    "line": 800,
+    "suggestion": "应该使用try-catch包裹并等待异步操作：try { await MySocketHelper.NoticeAll(...); } catch (Exception ex) { DingHelper.Push(...); } 或者使用Task.Run包裹并处理异常。"
+  },
+  {
+    "title": "SQL注入风险：字符串拼接SQL查询",
+    "description": "在CentralControlHandler.cs第722-723行和726行使用字符串拼接构建SQL查询，存在SQL注入风险。虽然使用了参数化查询的IP列表，但整体SQL结构仍通过字符串拼接。",
+    "severity": "high",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/CentralControl/CentralControlHandler.cs",
+    "line": 722,
+    "suggestion": "使用参数化查询，将cpuUsage作为参数传入：var sql = \"select count(1) from tb_ServerInfos where CpuUsage > @cpuUsage and IpTelecom in ({ipList})\"; 使用Db.tbServerWeb.Get<int>(sql, new { cpuUsage, ipList });"
+  },
+  {
+    "title": "硬编码值违反团队规范",
+    "description": "在CentralControlHandler.cs第720行硬编码了cpuUsage = 85和monitorSpecifyServerList列表。根据TuiGroup规范，禁止硬编码，应使用常量或配置。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/CentralControl/CentralControlHandler.cs",
+    "line": 720,
+    "suggestion": "定义常量：private const int CPU_USAGE_THRESHOLD = 85; private static readonly List<string> MONITOR_SPECIFY_SERVER_LIST = new List<string> { ... }; 或从配置文件读取。"
+  },
+  {
+    "title": "RunDelayRiskCheck方法性能问题：循环中调用异步API",
+    "description": "在FollowUpServer.cs的RunDelayRiskCheck方法中，GetWorkingDaysBetween方法在循环中逐日调用IsTodayWorkingDay异步API（第1920-1935行），如果日期跨度大，会产生大量API调用，严重影响性能。",
+    "severity": "high",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 1920,
+    "suggestion": "优化为批量查询或缓存工作日信息。可以考虑：1) 批量查询日期范围内所有工作日；2) 使用缓存减少重复API调用；3) 使用本地工作日计算库替代API调用。"
+  },
+  {
+    "title": "异常处理不当：catch后仅记录日志",
+    "description": "在FollowUpHandler.cs第802-806行的catch块中，仅记录了日志和钉钉通知，但没有重新抛出异常或返回错误状态。如果这是关键操作，应该考虑是否需要向上层传播异常。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpHandler.cs",
+    "line": 802,
+    "suggestion": "根据业务需求决定：如果Socket推送失败不影响主流程，当前处理可以；如果需要确保推送成功，应该重新抛出异常或返回错误状态。建议添加注释说明设计意图。"
+  },
+  {
+    "title": "潜在的N+1查询问题",
+    "description": "在FollowUpServer.cs的RunDelayRiskCheck方法中，虽然使用了GROUP BY，但后续按任务分组处理时，如果任务数量很大，可能产生性能问题。需要确认数据库索引是否优化。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 1880,
+    "suggestion": "检查SQL查询性能，确保相关字段（work_manager.id, work_manager_step.process_stage等）有适当的索引。建议添加数据库查询性能监控。"
+  },
+  {
+    "title": "代码格式问题：不必要的空行删除",
+    "description": "在NmsMakerHandler.cs第383行删除了一个空行，虽然不影响功能，但可能影响代码可读性。需要确认是否符合团队代码格式规范。",
+    "severity": "info",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/NmsMaker/NmsMakerHandler.cs",
+    "line": 383,
+    "suggestion": "保持代码格式一致性，遵循团队ReSharper配置的格式规范。"
+  },
+  {
+    "title": "参数验证不充分",
+    "description": "在FollowUpHandler.cs的UpdateStepProcessStage方法中，只验证了ProcessStage是否为1或2，但没有验证StepId是否存在。如果StepId不存在，SQL执行会成功但影响0行，可能导致业务逻辑错误。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpHandler.cs",
+    "line": 860,
+    "suggestion": "在执行更新前验证StepId是否存在：var exists = Db.tui_base.Get<int>(\"SELECT COUNT(1) FROM work_manager_step WHERE id = @StepId\", new { req.StepId }) > 0; if (!exists) throw new ApiException(-1, \"步骤不存在\");"
+  },
+  {
+    "title": "字符串拼接性能问题",
+    "description": "在FollowUpServer.cs的RunDelayRiskCheck方法中，多处使用字符串拼接构建消息（第1960-1980行），如果riskUsers数量很大，会产生大量字符串对象。",
+    "severity": "low",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 1960,
+    "suggestion": "使用StringBuilder优化字符串拼接：var sb = new StringBuilder(); sb.AppendLine(...); 最后使用sb.ToString()。"
+  },
+  {
+    "title": "缺少防御性编程：空值检查",
+    "description": "在FollowUpHandler.cs第432行，直接访问riskList.Contains()，如果riskList为null会抛出NullReferenceException。虽然代码中有null检查，但逻辑可以更清晰。",
+    "severity": "low",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpHandler.cs",
+    "line": 432,
+    "suggestion": "使用空值合并运算符简化代码：cards.Works[i].RiskLevel = (riskList?.Contains(cards.Works[i].WorkId) ?? false) ? 1 : 0;"
+  },
+  {
+    "title": "工作日计算API调用失败时的降级策略不够健壮",
+    "description": "在WorkingDaysCalculator.cs的GetWorkingDaysBetween方法中，虽然catch了异常并使用简单判断降级，但粗略估算（days - days/7*2）可能不准确，特别是在节假日较多的月份。",
+    "severity": "low",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Util/WorkingDaysCalculator.cs",
+    "line": 95,
+    "suggestion": "改进降级策略：记录降级日志，考虑使用本地节假日数据作为备用方案，或至少提供更准确的估算算法。"
+  },
+  {
+    "title": "ZendeskHelper中限流逻辑的线程安全问题",
+    "description": "在ZendeskHelper.cs第256-264行的限流逻辑中，使用静态变量LimitInfo进行计数，但没有使用锁保护，在高并发场景下可能出现线程安全问题。",
+    "severity": "high",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/Zendesk/ZendeskHelper.cs",
+    "line": 256,
+    "suggestion": "使用Interlocked或lock保护共享状态：private static readonly object _limitLock = new object(); lock (_limitLock) { ... } 或使用ConcurrentDictionary等线程安全集合。"
+  },
+  {
+    "title": "ZendeskHandler中逻辑错误：条件判断反了",
+    "description": "在ZendeskHandler.cs第2115行，条件从`lastComments.Count >= 3`改为`lastComments.Count < 3`，这个逻辑反转可能导致业务逻辑错误。需要确认这是否是预期的修改。",
+    "severity": "critical",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/Zendesk/ZendeskHandler.cs",
+    "line": 2115,
+    "suggestion": "仔细审查业务逻辑，确认条件判断是否正确。如果lastComments数量小于3时才添加ticketContent，需要确认这是否符合业务需求。建议添加注释说明业务意图。"
+  },
+  {
+    "title": "ZendeskHandler中EmailContentCn可能为null",
+    "description": "在ZendeskHandler.cs第2101行，直接调用ticket.EmailContentCn.Contains()，如果EmailContentCn为null会抛出NullReferenceException。",
+    "severity": "high",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/Zendesk/ZendeskHandler.cs",
+    "line": 2101,
+    "suggestion": "添加空值检查：if (!transedCommentIds.Contains(c.id.ToString()) && !string.IsNullOrWhiteSpace(c.body) && (ticket.EmailContentCn == null || !ticket.EmailContentCn.Contains(c.id.ToString())))"
+  }
+]
