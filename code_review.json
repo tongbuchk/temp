@@ -1,0 +1,114 @@
+[
+  {
+    "title": "严重性能问题：使用.Result阻塞异步调用",
+    "description": "在FollowUpHandler.cs第417行和FollowUpServer.cs第750行，使用Task.Run().Result阻塞异步调用，这会导致线程阻塞、死锁风险和生产环境502错误。这是TuiGroup团队规范严格禁止的做法。",
+    "severity": "critical",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpHandler.cs",
+    "line": 417,
+    "suggestion": "将调用改为真正的异步：\n1. 将GetCardList方法改为async Task\n2. 使用 await RunDelayRiskCheck(1, 0) 替代 Task.Run(...).Result\n3. 同样修改FollowUpServer.cs第750行的调用"
+  },
+  {
+    "title": "严重性能问题：使用.Result阻塞异步调用",
+    "description": "在FollowUpServer.cs第750行，使用Task.Run().Result阻塞异步调用，这会导致线程阻塞、死锁风险和生产环境502错误。",
+    "severity": "critical",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 750,
+    "suggestion": "将ResetWorkInfoCache方法改为async Task，使用 await RunDelayRiskCheck(1, workId) 替代 Task.Run(...).Result"
+  },
+  {
+    "title": "性能问题：SQL字符串拼接存在注入风险",
+    "description": "在CentralControlHandler.cs第722-725行，使用字符串拼接构建SQL查询，虽然使用了参数化查询，但IP列表的拼接方式仍存在潜在风险。",
+    "severity": "high",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/CentralControl/CentralControlHandler.cs",
+    "line": 722,
+    "suggestion": "使用参数化查询替代字符串拼接：\nvar ipList = RestartServerList.Select((item, index) => new { Name = \"@ip\" + index, Value = item }).ToList();\n然后使用参数化查询构建SQL"
+  },
+  {
+    "title": "性能问题：可能的N+1查询",
+    "description": "在FollowUpServer.cs的RunDelayRiskCheck方法中，虽然使用了GROUP BY，但后续的循环处理可能仍有优化空间。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 1857,
+    "suggestion": "检查是否可以通过一次查询获取所有需要的数据，避免多次数据库访问"
+  },
+  {
+    "title": "代码质量问题：未使用的using语句",
+    "description": "在FollowUpServer.cs文件开头，引入了多个可能未使用的命名空间，如Org.BouncyCastle.Ocsp、TencentCloud.Tci.V20190318.Models等。",
+    "severity": "low",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 1,
+    "suggestion": "清理未使用的using语句，提高代码可读性"
+  },
+  {
+    "title": "团队规范问题：异步方法缺少ConfigureAwait(false)",
+    "description": "在多个异步方法中（如RunDelayRiskCheck、AutoFormatCorrect等），未使用ConfigureAwait(false)，可能导致不必要的上下文切换，影响性能。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 1857,
+    "suggestion": "在所有异步调用后添加.ConfigureAwait(false)，例如：await WorkingDaysCalculator.IsTodayWorkingDay(today).ConfigureAwait(false)"
+  },
+  {
+    "title": "防御性编程：空引用检查不足",
+    "description": "在FollowUpHandler.cs第420-424行，检查riskList是否为null，但未检查riskList.Contains可能抛出的异常。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpHandler.cs",
+    "line": 420,
+    "suggestion": "添加更完善的空值检查，确保riskList不为null且cards.Works[i].WorkId有效"
+  },
+  {
+    "title": "异常处理：catch后无意义的处理",
+    "description": "在FollowUpHandler.cs第797-801行，catch异常后仅记录日志，但异常可能被吞没。根据TuiGroup规范，应使用ApiException或让异常向上传播。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpHandler.cs",
+    "line": 797,
+    "suggestion": "如果Socket推送失败不影响主流程，应记录日志并继续；如果影响主流程，应抛出ApiException"
+  },
+  {
+    "title": "性能问题：字符串拼接效率低",
+    "description": "在FollowUpServer.cs的RunDelayRiskCheck方法中，多处使用字符串拼接构建消息，应使用StringBuilder提高性能。",
+    "severity": "low",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 1950,
+    "suggestion": "使用StringBuilder替代字符串拼接，特别是在循环中构建消息时"
+  },
+  {
+    "title": "代码规范：硬编码值",
+    "description": "在多个地方存在硬编码值，如cpuUsage = 85、availableHoursPerPerson = workingDays * 7等，应提取为常量。",
+    "severity": "low",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/CentralControl/CentralControlHandler.cs",
+    "line": 719,
+    "suggestion": "将硬编码值提取为常量：\nprivate const int CPU_USAGE_THRESHOLD = 85;\nprivate const int HOURS_PER_DAY = 7;"
+  },
+  {
+    "title": "功能正确性：逻辑错误风险",
+    "description": "在ZendeskHandler.cs第2115行，条件从 >= 3 改为 < 3，这可能改变了原有逻辑，需要确认这是否是预期行为。",
+    "severity": "high",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/Zendesk/ZendeskHandler.cs",
+    "line": 2115,
+    "suggestion": "确认逻辑变更是否正确：原逻辑是当评论数>=3时添加工单内容，现在改为<3时添加。需要业务确认此变更是否符合预期"
+  },
+  {
+    "title": "性能问题：可能的重复数据库查询",
+    "description": "在InnerServer.cs第198行，在循环中查询数据库获取chargePerson，可能导致N+1查询问题。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/Inner/Server/InnerServer.cs",
+    "line": 198,
+    "suggestion": "批量查询所有需要的roleId对应的chargePerson，避免在循环中查询数据库"
+  },
+  {
+    "title": "团队规范：异常处理类型选择",
+    "description": "在ZendeskHelper.cs第270行，使用BizException抛出异常，根据TuiGroup规范，新接口应优先使用ApiException。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/Zendesk/ZendeskHelper.cs",
+    "line": 270,
+    "suggestion": "将BizException改为ApiException，以确保记录日志和钉钉通知"
+  },
+  {
+    "title": "防御性编程：参数验证不足",
+    "description": "在UpdateStepProcessStage方法中，虽然验证了ProcessStage的值，但未验证StepId的有效性。",
+    "severity": "low",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpHandler.cs",
+    "line": 860,
+    "suggestion": "添加StepId的有效性验证，确保该步骤存在且属于当前用户可操作的权限范围"
+  }
+]
