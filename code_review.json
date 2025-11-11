@@ -1,0 +1,114 @@
+[
+  {
+    "title": "严重性能问题：使用.Result阻塞异步调用",
+    "description": "在FollowUpHandler.cs第417行和FollowUpServer.cs第750行，使用Task.Run().Result阻塞异步调用，这会导致线程阻塞、死锁风险和502错误。违反了TuiGroup异步编程规范。",
+    "severity": "critical",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpHandler.cs",
+    "line": 417,
+    "suggestion": "将调用方法改为async，使用await替代.Result：\n```csharp\nvar riskList = await FollowUpServer.RunDelayRiskCheck(1, 0);\n```\n同时需要将GetCardList方法改为async Task。"
+  },
+  {
+    "title": "严重性能问题：使用.Result阻塞异步调用",
+    "description": "在FollowUpServer.cs第750行，ResetWorkInfoCache方法中使用Task.Run().Result阻塞异步调用，这会导致线程阻塞和死锁风险。",
+    "severity": "critical",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 750,
+    "suggestion": "将ResetWorkInfoCache方法改为async Task，使用await替代.Result：\n```csharp\nvar riskList = await RunDelayRiskCheck(1, workId);\n```"
+  },
+  {
+    "title": "异步调用异常被忽略：使用_=忽略异步操作",
+    "description": "在FollowUpHandler.cs第800行，使用_ = MySocketHelper.NoticeAll()忽略异步调用，这会导致异常被吞没，无法追踪失败原因。违反了TuiGroup异步编程规范。",
+    "severity": "high",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpHandler.cs",
+    "line": 800,
+    "suggestion": "使用try-catch包装并等待异步操作完成，或使用Task.Run处理后台任务：\n```csharp\ntry\n{\n    var cards = FollowUpServer.ResetWorkInfoCache(req.WorkId, req.GroupType);\n    await MySocketHelper.NoticeAll(...);\n}\ncatch (Exception ex)\n{\n    DingHelper.Push(\"tui_warn\", \"Socket推送失败\", ...);\n}\n```"
+  },
+  {
+    "title": "SQL注入风险：字符串拼接SQL查询",
+    "description": "在CentralControlHandler.cs第722-723行，使用字符串拼接构建SQL查询，存在SQL注入风险。虽然使用了硬编码的IP列表，但不符合防御性编程规范。",
+    "severity": "high",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/CentralControl/CentralControlHandler.cs",
+    "line": 722,
+    "suggestion": "使用参数化查询，即使数据来源可信也应使用参数化：\n```csharp\nvar sql = @\"select count(1) from tb_ServerInfos where CpuUsage > @cpuUsage and IpTelecom in @ipList\";\nvar thresholdExceededCount = Db.tbServerWeb.Get<int>(sql, new { cpuUsage, ipList = RestartServerList });\n```"
+  },
+  {
+    "title": "性能问题：RunDelayRiskCheck方法中循环调用异步API",
+    "description": "在FollowUpServer.cs的RunDelayRiskCheck方法中，GetWorkingDaysBetween方法在循环中调用IsTodayWorkingDay，每次都是异步API调用。如果日期跨度大，会产生大量串行异步调用，严重影响性能。",
+    "severity": "high",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 1857,
+    "suggestion": "优化工作日计算：\n1. 批量查询或缓存节假日数据\n2. 使用本地缓存减少API调用\n3. 对于跨度较大的日期范围，考虑使用批量API或本地计算：\n```csharp\n// 可以考虑批量获取日期范围的工作日信息\nvar workingDaysInfo = await GetWorkingDaysRangeAsync(startDate, endDate);\n```"
+  },
+  {
+    "title": "硬编码问题：魔法数字和字符串",
+    "description": "在FollowUpServer.cs第1900行等多处使用硬编码的步骤配置ID (2,3,4,5,6,7)，在CentralControlHandler.cs第719行硬编码CPU使用率85，在InnerServer.cs第198行硬编码7小时。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 1900,
+    "suggestion": "将硬编码值提取为常量：\n```csharp\nprivate static readonly int[] RISK_CHECK_STEP_CONFIG_IDS = new[] { 2, 3, 4, 5, 6, 7 };\nprivate const int CPU_USAGE_THRESHOLD = 85;\nprivate const int AVAILABLE_HOURS_PER_DAY = 7;\n```"
+  },
+  {
+    "title": "异常处理不当：catch后仅记录日志",
+    "description": "在FollowUpServer.cs的RunDelayRiskCheck方法中，多处catch异常后仅记录日志但继续执行，可能导致数据不一致。在WorkingDaysCalculator.cs中也有类似问题。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 1860,
+    "suggestion": "根据业务需求决定：如果异常不影响核心流程，应明确说明原因；如果影响核心流程，应抛出异常或返回错误状态。对于工作日计算失败，当前的回退逻辑是合理的，但应添加更详细的日志。"
+  },
+  {
+    "title": "性能问题：多次数据库查询可优化",
+    "description": "在FollowUpServer.cs的RunDelayRiskCheck方法中，SQL查询虽然使用了GROUP BY，但后续处理中可能还有优化空间。建议检查是否有N+1查询问题。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 1880,
+    "suggestion": "检查查询性能，确保使用了适当的索引。对于大数据量场景，考虑分页处理或添加查询超时设置。"
+  },
+  {
+    "title": "代码规范：未使用的using引用",
+    "description": "在FollowUpServer.cs第4行引入了TencentCloud.Tci.V20190318.Models，但代码中未使用，应清理。",
+    "severity": "low",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 4,
+    "suggestion": "删除未使用的using语句：\n```csharp\n// 删除: using TencentCloud.Tci.V20190318.Models;\n```"
+  },
+  {
+    "title": "潜在空引用风险：缺少空值检查",
+    "description": "在FollowUpHandler.cs第424行，riskList可能为null，虽然代码中有null检查，但在某些路径下projects.Find可能返回null导致空引用异常。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpHandler.cs",
+    "line": 424,
+    "suggestion": "添加防御性检查：\n```csharp\nvar projectName = projects?.Find(t => t.Project == card.Project)?.Name ?? \"未知项目\";\n```"
+  },
+  {
+    "title": "API限流实现问题：使用静态变量可能线程不安全",
+    "description": "在ZendeskHelper.cs中，LimitInfo使用静态变量进行限流计数，在高并发场景下可能存在线程安全问题。",
+    "severity": "high",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/Zendesk/ZendeskHelper.cs",
+    "line": 256,
+    "suggestion": "使用线程安全的计数器，如Interlocked或ConcurrentDictionary：\n```csharp\nprivate static readonly ConcurrentDictionary<string, int> _limitCounters = new();\n// 使用Interlocked.Increment进行原子操作\n```"
+  },
+  {
+    "title": "代码逻辑错误：条件判断可能相反",
+    "description": "在ZendeskHandler.cs第2115行，条件从`lastComments.Count >= 3`改为`lastComments.Count < 3`，这个逻辑变更需要确认是否符合业务需求。",
+    "severity": "high",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/Zendesk/ZendeskHandler.cs",
+    "line": 2115,
+    "suggestion": "确认业务逻辑：如果评论数小于3时才添加工单内容，需要明确说明原因，并添加注释说明业务意图。"
+  },
+  {
+    "title": "异常处理：使用BizException而非ApiException",
+    "description": "在ZendeskHelper.cs第270行，使用BizException而非ApiException，根据TuiGroup规范，新接口应统一使用ApiException以记录日志和钉钉通知。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/Zendesk/ZendeskHelper.cs",
+    "line": 270,
+    "suggestion": "将BizException改为ApiException：\n```csharp\nthrow new ApiException(500, \"Update ZendeskComment:PerMinuteZendeskApiLimitMax\");\n```"
+  },
+  {
+    "title": "字符串性能：频繁字符串拼接",
+    "description": "在FollowUpServer.cs的RunDelayRiskCheck方法中，message字符串通过多次+=拼接，应使用StringBuilder优化性能。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 1950,
+    "suggestion": "使用StringBuilder优化字符串拼接：\n```csharp\nvar sb = new StringBuilder();\nsb.AppendLine($\"任务：[{workName}](...)\");\nsb.AppendLine($\"预期提测时间：{expectedTestTime:yyyy-MM-dd}\");\nvar message = sb.ToString();\n```"
+  }
+]
