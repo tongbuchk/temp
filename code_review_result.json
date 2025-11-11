@@ -1,0 +1,98 @@
+[
+  {
+    "title": "严重性能问题：使用.Result阻塞异步调用",
+    "description": "在FollowUpHandler.cs第417行和FollowUpServer.cs第750行，使用Task.Run().Result阻塞异步调用，这会导致线程阻塞、死锁风险，并可能引发502错误。违反了TuiGroup规范中'禁止使用.Result调用异步方法'的规定。",
+    "severity": "critical",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpHandler.cs",
+    "line": 417,
+    "suggestion": "将GetCardList方法改为async Task，使用await调用：var riskList = await FollowUpServer.RunDelayRiskCheck(1, 0); 同样修改FollowUpServer.cs中ResetWorkInfoCache方法的调用方式。"
+  },
+  {
+    "title": "严重性能问题：使用.Result阻塞异步调用",
+    "description": "在FollowUpServer.cs第750行，使用Task.Run().Result阻塞异步调用RunDelayRiskCheck方法，这会导致线程阻塞和死锁风险。",
+    "severity": "critical",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 750,
+    "suggestion": "将ResetWorkInfoCache方法改为async Task，使用await调用：var riskList = await RunDelayRiskCheck(1, workId);"
+  },
+  {
+    "title": "异常处理问题：Fire and Forget模式吞没异常",
+    "description": "在FollowUpHandler.cs的UpdateWorkExpectedTestTime方法中，使用_ = MySocketHelper.NoticeAll(...)的Fire and Forget模式，异常会被吞没，无法追踪。违反了TuiGroup规范。",
+    "severity": "high",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpHandler.cs",
+    "line": 795,
+    "suggestion": "使用try-catch包裹并等待异步调用：try { await MySocketHelper.NoticeAll(...); } catch (Exception ex) { DingHelper.Push(...); } 或者使用Task.Run包裹并处理异常。"
+  },
+  {
+    "title": "代码质量问题：未使用的using语句",
+    "description": "在FollowUpServer.cs中引入了未使用的命名空间：using Org.BouncyCastle.Ocsp; 和 using TencentCloud.Tci.V20190318.Models; 这些应该被移除。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 1,
+    "suggestion": "删除未使用的using语句：using Org.BouncyCastle.Ocsp; 和 using TencentCloud.Tci.V20190318.Models;"
+  },
+  {
+    "title": "并发安全问题：静态变量缺少线程安全保护",
+    "description": "在ZendeskHelper.cs中，LimitInfo静态变量的访问缺少线程安全保护，在高并发场景下可能导致计数不准确。",
+    "severity": "high",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/Zendesk/ZendeskHelper.cs",
+    "line": 256,
+    "suggestion": "使用Interlocked或lock保护LimitInfo的访问：使用Interlocked.Increment或lock语句确保线程安全。"
+  },
+  {
+    "title": "性能问题：字符串拼接可优化",
+    "description": "在FollowUpServer.cs的RunDelayRiskCheck方法中，多处使用字符串拼接构建message，当消息较长时性能较差。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 1950,
+    "suggestion": "使用StringBuilder替代字符串拼接，特别是在循环中构建长消息时：var sb = new StringBuilder(); sb.Append(...); message = sb.ToString();"
+  },
+  {
+    "title": "数据库性能：复杂SQL查询可能影响性能",
+    "description": "在FollowUpServer.cs的RunDelayRiskCheck方法中，SQL查询包含多个JOIN和子查询，对于大数据量可能影响性能。需要确认是否有适当的索引。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 1870,
+    "suggestion": "检查相关表的索引是否完整，特别是work_manager_step_work、work_manager_step、work_manager_step_checklist_step等表的关联字段。考虑将复杂查询拆分为多个简单查询或使用视图。"
+  },
+  {
+    "title": "防御性编程：参数验证不完整",
+    "description": "在UpdateWorkExpectedTestTime方法中，如果ExpectedTestTime为空字符串会设置为null，但缺少对日期格式的验证。如果传入无效日期字符串可能导致后续问题。",
+    "severity": "low",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpHandler.cs",
+    "line": 786,
+    "suggestion": "添加日期格式验证：if (!string.IsNullOrEmpty(req.ExpectedTestTime) && !DateTime.TryParse(req.ExpectedTestTime, out _)) { throw new ApiException(-1, \"预期提测时间格式不正确\"); }"
+  },
+  {
+    "title": "代码规范：硬编码数值",
+    "description": "在FollowUpServer.cs的RunDelayRiskCheck方法中，硬编码了数值7（每天可处理7小时）、步骤配置ID(2,3,4,5,6,7)等，应该使用常量定义。",
+    "severity": "low",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 1920,
+    "suggestion": "定义常量：private const decimal AvailableHoursPerDay = 7; private static readonly int[] ProcessStageStepConfigIds = {2, 3, 4, 5, 6, 7}; 并在代码中使用这些常量。"
+  },
+  {
+    "title": "异常处理：工作日计算异常处理可优化",
+    "description": "在RunDelayRiskCheck方法中，工作日计算的异常处理使用了粗略估算，可能导致不准确的结果。",
+    "severity": "low",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 1930,
+    "suggestion": "工作日计算失败时应该记录更详细的错误信息，并考虑是否应该抛出异常而不是使用粗略估算，或者至少记录警告日志。"
+  },
+  {
+    "title": "代码逻辑问题：条件判断可能错误",
+    "description": "在ZendeskHandler.cs第2115行，条件从'lastComments.Count >= 3'改为'lastComments.Count < 3'，这个逻辑反转需要确认是否符合业务需求。",
+    "severity": "high",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/Zendesk/ZendeskHandler.cs",
+    "line": 2115,
+    "suggestion": "确认业务逻辑：当评论数小于3时才添加工单内容，这个逻辑反转是否正确？如果是bug修复，建议在注释中说明原因。"
+  },
+  {
+    "title": "代码规范：SQL注入风险检查",
+    "description": "在CentralControlHandler.cs中，虽然使用了参数化查询，但ipList和serverList的构建使用了字符串拼接，虽然数据来源可控，但建议使用参数化查询更安全。",
+    "severity": "low",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/CentralControl/CentralControlHandler.cs",
+    "line": 723,
+    "suggestion": "虽然当前实现相对安全（数据来源可控），但建议使用参数化查询：使用IN子句配合参数数组，或使用表值参数（SQL Server）或临时表（MySQL）。"
+  }
+]
