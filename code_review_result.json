@@ -1,0 +1,106 @@
+[
+  {
+    "title": "严重性能问题：使用.Result阻塞异步调用导致死锁风险",
+    "description": "在FollowUpHandler.cs第417行和FollowUpServer.cs第750行，使用Task.Run().Result阻塞异步调用。这会导致线程阻塞，在高并发场景下可能导致死锁和502错误。根据TuiGroup规范，严格禁止使用.Result调用异步方法。",
+    "severity": "critical",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpHandler.cs",
+    "line": 417,
+    "suggestion": "将方法改为async Task，使用await替代.Result：\nvar riskList = await FollowUpServer.RunDelayRiskCheck(1, 0);\n同时需要将GetCardList方法签名改为：public static async Task<...> GetCardList(...)"
+  },
+  {
+    "title": "严重性能问题：使用.Result阻塞异步调用导致死锁风险",
+    "description": "在FollowUpServer.cs第750行，ResetWorkInfoCache方法中使用Task.Run().Result阻塞异步调用。这会导致线程阻塞，在高并发场景下可能导致死锁和502错误。",
+    "severity": "critical",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 750,
+    "suggestion": "将ResetWorkInfoCache方法改为async Task，使用await替代.Result：\nvar riskList = await RunDelayRiskCheck(1, workId);"
+  },
+  {
+    "title": "异步调用异常被忽略：Fire and Forget模式",
+    "description": "在FollowUpHandler.cs的UpdateWorkExpectedTestTime方法中，使用`_ = MySocketHelper.NoticeAll(...)`忽略异步调用。根据TuiGroup规范，禁止使用`_ =`忽略异步调用，因为异常会被吞没，无法追踪。虽然已有try-catch，但Fire and Forget模式本身不符合规范。",
+    "severity": "high",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpHandler.cs",
+    "line": 797,
+    "suggestion": "应该等待异步操作完成：\ntry {\n    var cards = FollowUpServer.ResetWorkInfoCache(req.WorkId, req.GroupType);\n    await MySocketHelper.NoticeAll(...);\n} catch (Exception ex) {\n    DingHelper.Push(...);\n}\n或者如果必须后台执行，使用Task.Run并处理异常：\nTask.Run(async () => {\n    try {\n        await MySocketHelper.NoticeAll(...);\n    } catch (Exception ex) {\n        Logger.Error(ex, \"Socket推送失败\");\n    }\n});"
+  },
+  {
+    "title": "性能问题：循环中频繁调用异步方法",
+    "description": "在FollowUpServer.cs的RunDelayRiskCheck方法中，GetWorkingDaysBetween方法在while循环中每次调用IsTodayWorkingDay，这会导致大量异步API调用。如果日期跨度较大，会产生性能瓶颈。",
+    "severity": "high",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 1897,
+    "suggestion": "考虑批量获取工作日信息，或者缓存工作日计算结果。如果API支持，可以一次性获取日期范围内的工作日信息，而不是逐日查询。"
+  },
+  {
+    "title": "SQL注入风险：字符串拼接SQL查询",
+    "description": "在CentralControlHandler.cs的HeartbeatNoticeDingDing方法中，使用字符串拼接构建SQL查询。虽然使用了Select和Join进行了一定的安全处理，但字符串拼接SQL仍然存在潜在风险。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/CentralControl/CentralControlHandler.cs",
+    "line": 722,
+    "suggestion": "使用参数化查询或IN子句参数化：\nvar ipList = RestartServerList.Select((item, index) => new { Index = index, Ip = item }).ToList();\nvar sql = $@\"select count(1) from tb_ServerInfos where CpuUsage > @cpuUsage and IpTelecom in ({string.Join(\",\", ipList.Select((x, i) => $\"@ip{i}\"))})\";\nvar parameters = new { cpuUsage }.ToDictionary();\nforeach (var item in ipList) { parameters[$\"ip{item.Index}\"] = item.Ip; }"
+  },
+  {
+    "title": "硬编码问题：魔法数字和字符串",
+    "description": "在多个文件中存在硬编码值，如CentralControlHandler.cs中的cpuUsage=85，monitorSpecifyServerList硬编码IP列表，FollowUpServer.cs中的步骤配置ID硬编码(2,3,4,5,6,7)等。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/CentralControl/CentralControlHandler.cs",
+    "line": 720,
+    "suggestion": "将硬编码值提取为常量或配置项：\nprivate const int CPU_USAGE_THRESHOLD = 85;\nprivate static readonly List<string> MONITOR_SPECIFY_SERVER_LIST = new List<string> { \"43.135.135.227\", \"49.51.207.212\", \"43.135.178.134\" };\n或者从配置文件读取。"
+  },
+  {
+    "title": "异常处理不规范：ApiException错误码使用-1",
+    "description": "在FollowUpHandler.cs的UpdateStepProcessStage方法中，使用ApiException(-1, ...)。根据TuiGroup规范，应该使用合适的HTTP状态码（如400表示参数错误）。",
+    "severity": "low",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpHandler.cs",
+    "line": 863,
+    "suggestion": "使用标准的HTTP状态码：\nthrow new ApiException(400, \"不存在的处理阶段，请检查\");"
+  },
+  {
+    "title": "性能问题：多次数据库查询可优化",
+    "description": "在FollowUpServer.cs的RunDelayRiskCheck方法中，SQL查询较为复杂，涉及多表JOIN和子查询。如果数据量较大，可能需要优化索引或考虑分页查询。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 1908,
+    "suggestion": "检查相关表的索引是否完善，特别是work_manager.expected_test_time、work_manager_step.process_stage等字段。如果数据量很大，考虑添加适当的索引或优化查询逻辑。"
+  },
+  {
+    "title": "代码规范：未使用的using语句",
+    "description": "在FollowUpServer.cs中添加了多个using语句，包括Org.BouncyCastle.Ocsp、TencentCloud.Tci.V20190318.Models等，但代码中可能未使用这些命名空间。",
+    "severity": "low",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 1,
+    "suggestion": "清理未使用的using语句，保持代码整洁。使用IDE的自动清理功能或ReSharper提示。"
+  },
+  {
+    "title": "防御性编程：缺少空值检查",
+    "description": "在FollowUpHandler.cs的GetCardList方法中，使用riskList.Contains()前虽然检查了riskList != null，但在某些情况下riskList可能为空集合，需要明确处理。另外，projects.Find()可能返回null，需要空值检查。",
+    "severity": "low",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpHandler.cs",
+    "line": 435,
+    "suggestion": "添加更完善的空值检查：\nif (riskList != null && riskList.Count > 0 && riskList.Contains(cards.Works[i].WorkId))\n{\n    cards.Works[i].RiskLevel = 1;\n}\n\nvar projectInfo = projects?.Find(t => t.Project == card.Project);\nvar projectName = projectInfo?.Name ?? \"未知项目\";"
+  },
+  {
+    "title": "代码逻辑问题：条件判断可能错误",
+    "description": "在ZendeskHandler.cs第2115行，条件从`lastComments.Count >= 3`改为`lastComments.Count < 3`，这个逻辑反转可能导致业务逻辑错误，需要确认这是否是预期的变更。",
+    "severity": "high",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/Zendesk/ZendeskHandler.cs",
+    "line": 2115,
+    "suggestion": "确认这个逻辑反转是否符合业务需求。如果原逻辑是\"当评论数>=3时添加工单内容\"，新逻辑\"<3时添加\"可能是错误的。需要与业务方确认。"
+  },
+  {
+    "title": "性能问题：限流实现可能不够健壮",
+    "description": "在ZendeskHelper.cs的ExecZendeskCommentWorkFlow方法中，添加了基于分钟的时间戳限流，但使用字符串比较时间可能不够精确，且在高并发场景下可能存在线程安全问题。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/Zendesk/ZendeskHelper.cs",
+    "line": 256,
+    "suggestion": "使用更健壮的限流实现，考虑使用SemaphoreSlim或第三方限流库（如AspNetCoreRateLimit）。当前实现存在线程安全问题，应该使用Interlocked或lock保护共享状态。"
+  },
+  {
+    "title": "代码规范：异常信息不够详细",
+    "description": "在多个catch块中，异常信息记录不够详细，缺少关键上下文信息（如workId、参数值等），不利于问题排查。",
+    "severity": "low",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 1960,
+    "suggestion": "在异常日志中包含更多上下文信息：\ncatch (Exception ex)\n{\n    Env.Logger.Error(ex, $\"延期提测风险检查异常: WorkId={workId}, ExpectedTestTime={expectedTestTime}, Message={ex.Message}\");\n}"
+  }
+]
