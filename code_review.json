@@ -1,0 +1,98 @@
+[
+  {
+    "title": "严重性能问题：使用Task.Run().Result阻塞异步调用",
+    "description": "在FollowUpHandler.cs第417行和FollowUpServer.cs第750行使用了Task.Run(async () => await ...).Result，这会阻塞当前线程，导致性能问题和潜在的死锁风险。违反了TuiGroup异步编程规范：禁止使用.Result调用异步方法。",
+    "severity": "critical",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpHandler.cs",
+    "line": 417,
+    "suggestion": "将方法改为async Task，使用await直接调用：var riskList = await FollowUpServer.RunDelayRiskCheck(1, 0); 如果调用方不是异步方法，需要向上传播async/await。"
+  },
+  {
+    "title": "严重性能问题：使用Task.Run().Result阻塞异步调用",
+    "description": "在FollowUpServer.cs第750行使用了Task.Run(async () => await RunDelayRiskCheck(1, workId)).Result，这会阻塞当前线程，导致性能问题和潜在的死锁风险。",
+    "severity": "critical",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 750,
+    "suggestion": "直接使用await：var riskList = await RunDelayRiskCheck(1, workId); 需要将GetCardList方法改为async Task。"
+  },
+  {
+    "title": "异步调用异常被吞没：使用_ =忽略异步操作",
+    "description": "在FollowUpHandler.cs第793行使用了_ = MySocketHelper.NoticeAll(...)，这会忽略异步调用的异常，导致异常被吞没无法追踪。违反了TuiGroup规范：禁止使用_ =忽略异步调用。",
+    "severity": "high",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpHandler.cs",
+    "line": 793,
+    "suggestion": "应该使用await等待异步操作完成，或者在Task.Run中处理异常：await MySocketHelper.NoticeAll(...); 如果确实需要后台执行，应在Task.Run中捕获异常并记录日志。"
+  },
+  {
+    "title": "SQL注入风险：字符串拼接SQL查询",
+    "description": "在CentralControlHandler.cs第722-723行和726-727行使用字符串拼接构建SQL查询，存在SQL注入风险。虽然使用了参数化查询，但IP列表的拼接方式不够安全。",
+    "severity": "high",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/CentralControl/CentralControlHandler.cs",
+    "line": 722,
+    "suggestion": "使用参数化查询，将IP列表作为参数传递，或使用IN子句的参数化形式。例如：使用Db.tbServerWeb.List<string>(sql, new { ipList = RestartServerList })的形式。"
+  },
+  {
+    "title": "性能问题：多次数据库查询未优化",
+    "description": "在FollowUpServer.cs的RunDelayRiskCheck方法中，虽然使用了单次复杂SQL查询，但在循环中可能调用IsTodayWorkingDay方法，如果该方法内部有数据库或API调用，会导致性能问题。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 1900,
+    "suggestion": "考虑批量获取工作日信息，或缓存工作日计算结果，避免在循环中重复调用API。可以使用Dictionary<DateTime, bool>缓存IsTodayWorkingDay的结果。"
+  },
+  {
+    "title": "性能问题：字符串拼接未使用StringBuilder",
+    "description": "在FollowUpServer.cs的RunDelayRiskCheck方法中，message变量通过多次字符串拼接构建，当riskUsers数量较多时会产生大量临时字符串对象，影响GC性能。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 1970,
+    "suggestion": "使用StringBuilder构建消息：var sb = new StringBuilder(); sb.AppendLine(...); 最后使用sb.ToString()获取结果。"
+  },
+  {
+    "title": "异常处理不规范：catch后仅记录日志无实际处理",
+    "description": "在FollowUpHandler.cs第797-801行的catch块中，仅记录日志和发送钉钉通知，但异常已被try-catch捕获，可能导致调用方无法感知异常。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpHandler.cs",
+    "line": 797,
+    "suggestion": "根据TuiGroup规范，如果Socket推送失败不影响主流程，应该记录日志但不抛出异常；如果影响主流程，应该抛出ApiException。当前处理方式可以接受，但建议明确说明这是预期的容错处理。"
+  },
+  {
+    "title": "硬编码问题：魔法数字未使用常量",
+    "description": "在FollowUpServer.cs第1890行和1891行使用了硬编码的数字1和0作为参数，在多个地方使用了硬编码的步骤配置ID(2,3,4,5,6,7)和process_stage值(1,2)。",
+    "severity": "low",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 1890,
+    "suggestion": "定义常量：const int PROCESS_STAGE_BEFORE_TEST = 1; const int PROCESS_STAGE_AFTER_TEST = 2; const int AVAILABLE_HOURS_PER_DAY = 7; 步骤配置ID也应该定义为常量数组。"
+  },
+  {
+    "title": "代码规范：未使用ConfigureAwait(false)",
+    "description": "在多个异步方法中（如LanguageHelper.cs的AutoFormatCorrect方法），未使用ConfigureAwait(false)，可能导致不必要的上下文切换，影响性能。",
+    "severity": "low",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/Language/Helper/LanguageHelper.cs",
+    "line": 1140,
+    "suggestion": "在库代码或非UI代码的异步调用后添加.ConfigureAwait(false)，避免不必要的上下文切换：await client.PostAsync(...).ConfigureAwait(false);"
+  },
+  {
+    "title": "防御性编程：缺少参数验证",
+    "description": "在UpdateStepProcessStage方法中，虽然验证了ProcessStage的值，但未验证StepId是否大于0，可能存在无效参数导致的问题。",
+    "severity": "low",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpHandler.cs",
+    "line": 860,
+    "suggestion": "添加参数验证：if (req.StepId <= 0) throw new ApiException(-1, \"无效的步骤ID\"); 确保所有输入参数都经过验证。"
+  },
+  {
+    "title": "代码规范：命名不一致",
+    "description": "在InnerHandler.cs和FollowUpHandler.cs中都定义了RunDelayRiskCheck方法，但参数顺序不一致（InnerHandler: specifyWorkId, isNotSend; FollowUpServer: isNotSend, specifyWorkId），容易导致调用错误。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/Inner/InnerHandler.cs",
+    "line": 427,
+    "suggestion": "统一参数顺序，建议使用命名参数调用，或重构方法签名使其一致。当前调用：await FollowUpServer.RunDelayRiskCheck(isNotSend, specifyWorkId) 参数顺序与定义不一致。"
+  },
+  {
+    "title": "性能问题：可能的N+1查询",
+    "description": "在FollowUpServer.cs的GetCardList方法中，虽然riskList是一次性获取的，但如果GetCardList被频繁调用，每次都会执行RunDelayRiskCheck，可能造成性能问题。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 432,
+    "suggestion": "考虑缓存riskList结果，或仅在必要时调用RunDelayRiskCheck。如果GetCardList调用频繁，应该优化风险检查的触发时机。"
+  }
+]
