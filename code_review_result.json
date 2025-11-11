@@ -1,0 +1,82 @@
+[
+  {
+    "title": "性能问题：多次枚举集合导致性能损耗",
+    "description": "代码中多次对 `list` 集合进行 `Where().Max()` 操作，每次都会完整枚举集合。在行423-432中，连续5次枚举同一集合，当集合较大时会造成明显的性能损耗。",
+    "severity": "high",
+    "file": "Tongbu.Tui.Inner.Abroad/Handler/InnerHandler.cs",
+    "line": 423,
+    "suggestion": "建议将集合枚举结果缓存，或使用一次遍历计算所有Max值：\n```csharp\nvar activityMax = 0;\nvar normalMax = 0;\nvar couponMax = 0;\nvar trialMax = 0;\nvar trialBMax = 0;\nforeach (var item in list) {\n    if (item.IsActivity) activityMax = Math.Max(activityMax, item.CouponKind);\n    if (item.CouponKind >= 1000 && item.CouponKind < 2000) normalMax = Math.Max(normalMax, item.CouponKind);\n    if (item.CouponKind >= 2000 && item.CouponKind < 3000) couponMax = Math.Max(couponMax, item.CouponKind);\n    if (item.CouponKind >= 3000 && item.CouponKind < 4000) trialMax = Math.Max(trialMax, item.CouponKind);\n    if (item.CouponKind >= 4000 && item.CouponKind < 5000) trialBMax = Math.Max(trialBMax, item.CouponKind);\n}\n```"
+  },
+  {
+    "title": "性能问题：多次FirstOrDefault查找效率低",
+    "description": "在行677、726、749、774、799中，多次对 `appleSubscriptionGroupList` 使用 `FirstOrDefault(s => s.key == xxx)` 进行查找。每次查找都是O(n)复杂度，当列表较大时性能较差。",
+    "severity": "medium",
+    "file": "Tongbu.Tui.Inner.Abroad/Handler/InnerHandler.cs",
+    "line": 677,
+    "suggestion": "建议将列表转换为Dictionary以提高查找效率：\n```csharp\nvar appleSubscriptionGroupDict = appleSubscriptionGroupList.ToDictionary(s => s.key, s => s.value);\n// 使用时：\nif (appleSubscriptionGroupDict.TryGetValue(req.AppleSubscriptionGroup, out var subValue)) {\n    // 处理逻辑\n}\n```"
+  },
+  {
+    "title": "严重问题：异步方法调用缺少await可能导致异常被吞没",
+    "description": "在行957-1007中，调用了 `AppStoreConnectAPIService.GetLocalPrice` 和 `GooglePlayService.GetLocalPrice` 方法，但没有使用await。如果这些方法是异步的，会导致异常被吞没，且无法追踪失败原因。这违反了TuiGroup规范中禁止使用 '_ = 异步调用' 的原则。",
+    "severity": "critical",
+    "file": "Tongbu.Tui.Inner.Abroad/Handler/InnerHandler.cs",
+    "line": 957,
+    "suggestion": "如果方法是异步的，必须使用await并处理异常：\n```csharp\nif (createAppleLocalPriceList.Count > 0) {\n    foreach (var item in createAppleLocalPriceList) {\n        try {\n            await AppStoreConnectAPIService.GetLocalPrice(req.AppGroup, item).ConfigureAwait(false);\n        } catch (Exception ex) {\n            Logger.Error(ex, \"创建Apple本地价格失败: AppGroup={AppGroup}, SubscriptionGroup={SubscriptionGroup}\", req.AppGroup, item);\n            // 根据业务需求决定是否继续或抛出异常\n        }\n    }\n}\n```\n如果方法是同步的，也需要添加异常处理。"
+  },
+  {
+    "title": "团队规范违反：使用BizException而非ApiException",
+    "description": "在行416-420中使用了 `BizException`，但根据TuiGroup团队规范，新接口应统一使用 `ApiException`（会记录日志+钉钉通知）。`BizException` 仅在确定不需要日志和钉钉时使用。",
+    "severity": "high",
+    "file": "Tongbu.Tui.Inner.Abroad/Handler/InnerHandler.cs",
+    "line": 416,
+    "suggestion": "将 `BizException` 替换为 `ApiException`：\n```csharp\nif (req.Type >= 1 && string.IsNullOrEmpty(req.MonthPkg.CouponAppleProductId))\n    throw new ApiException(400, \"[月卡]未需配置基础套餐的折扣商品id\");\n```"
+  },
+  {
+    "title": "性能问题：字符串拼接使用+=导致性能损耗",
+    "description": "在行671-675、720-724、745-749、770-774、795-799中，使用 `returnMsg += ...` 进行字符串拼接。当拼接次数较多时，每次都会创建新的字符串对象，造成GC压力。",
+    "severity": "medium",
+    "file": "Tongbu.Tui.Inner.Abroad/Handler/InnerHandler.cs",
+    "line": 671,
+    "suggestion": "使用StringBuilder进行字符串拼接：\n```csharp\nvar returnMsgBuilder = new StringBuilder();\n// ...\nreturnMsgBuilder.AppendLine($\"月：pkgId:{monthPkgInfo.pkgId}，ppId:{monthPkgInfo.ppId}\");\nreturnMsgBuilder.AppendLine($\"季：pkgId:{quarterPkgInfo.pkgId}，ppId:{quarterPkgInfo.ppId}\");\nreturnMsgBuilder.AppendLine($\"年：pkgId:{yearPkgInfo.pkgId}，ppId:{yearPkgInfo.ppId}\");\n// ...\nvar returnMsg = returnMsgBuilder.ToString();\n```"
+  },
+  {
+    "title": "代码规范：硬编码魔法数字应使用常量",
+    "description": "在行424-432中使用了硬编码的魔法数字（1000, 2000, 3000, 4000, 5000）来区分不同类型的套餐。这些数字缺乏语义，降低了代码可读性和可维护性。",
+    "severity": "medium",
+    "file": "Tongbu.Tui.Inner.Abroad/Handler/InnerHandler.cs",
+    "line": 424,
+    "suggestion": "定义常量来替代魔法数字：\n```csharp\nprivate const int COUPON_KIND_NORMAL_MIN = 1000;\nprivate const int COUPON_KIND_NORMAL_MAX = 2000;\nprivate const int COUPON_KIND_COUPON_MIN = 2000;\nprivate const int COUPON_KIND_COUPON_MAX = 3000;\nprivate const int COUPON_KIND_TRIAL_MIN = 3000;\nprivate const int COUPON_KIND_TRIAL_MAX = 4000;\nprivate const int COUPON_KIND_TRIAL_B_MIN = 4000;\nprivate const int COUPON_KIND_TRIAL_B_MAX = 5000;\n\n// 使用时：\nvar normalMaxCouponKind = list.Where(s => s.CouponKind >= COUPON_KIND_NORMAL_MIN && s.CouponKind < COUPON_KIND_NORMAL_MAX).Max(s => s.CouponKind);\n```"
+  },
+  {
+    "title": "防御性编程：缺少null检查",
+    "description": "在行433中获取 `appleSubscriptionGroupList` 后，后续代码直接使用但没有进行null检查。如果 `GetAppleSubscriptionGroupList` 返回null，会导致NullReferenceException。",
+    "severity": "high",
+    "file": "Tongbu.Tui.Inner.Abroad/Handler/InnerHandler.cs",
+    "line": 433,
+    "suggestion": "添加null检查：\n```csharp\nvar appleSubscriptionGroupList = GetAppleSubscriptionGroupList(req.AppGroup) ?? new List<KeyValuePair<string, string>>();\n```\n或者在使用前检查：\n```csharp\nvar appleSubscriptionGroupList = GetAppleSubscriptionGroupList(req.AppGroup);\nif (appleSubscriptionGroupList == null) {\n    throw new ApiException(500, \"获取Apple订阅组列表失败\");\n}\n```"
+  },
+  {
+    "title": "性能问题：字典创建和遍历可以优化",
+    "description": "在行963-1007中，创建了3个Dictionary（createGoogleLocalPriceDicMonth、createGoogleLocalPriceDicQuarter、createGoogleLocalPriceDicYear），每个都包含4个键值对，然后分别遍历。可以合并处理以提高效率。",
+    "severity": "low",
+    "file": "Tongbu.Tui.Inner.Abroad/Handler/InnerHandler.cs",
+    "line": 963,
+    "suggestion": "可以考虑合并处理或使用更高效的数据结构。如果逻辑允许，可以合并为一个循环：\n```csharp\nvar googleLocalPriceTasks = new List<Task>();\n\n// 月卡\nif (!string.IsNullOrEmpty(req.MonthPkg.GoogleProductId)) {\n    AddGooglePriceTask(googleLocalPriceTasks, req.AppGroup, req.MonthPkg.GoogleProductId, req.MonthPkg.ActivityOfferId);\n    AddGooglePriceTask(googleLocalPriceTasks, req.AppGroup, req.MonthPkg.GoogleProductId, req.MonthPkg.CouponOfferId);\n    // ... 其他offer\n}\n\nawait Task.WhenAll(googleLocalPriceTasks).ConfigureAwait(false);\n```"
+  },
+  {
+    "title": "异常处理：事务提交后的操作缺少异常处理",
+    "description": "在行957-1007中，事务已经提交后执行了创建本地价格的操作。如果这些操作失败，可能导致数据不一致（套餐已创建但价格未创建）。缺少异常处理和回滚机制。",
+    "severity": "high",
+    "file": "Tongbu.Tui.Inner.Abroad/Handler/InnerHandler.cs",
+    "line": 957,
+    "suggestion": "添加异常处理，记录日志，并根据业务需求决定是否需要补偿操作：\n```csharp\ntran.Commit();\n\ntry {\n    // 创建本地价格\n    if (createAppleLocalPriceList.Count > 0) {\n        // ... 处理逻辑\n    }\n} catch (Exception ex) {\n    Logger.Error(ex, \"创建本地价格失败，但套餐已创建: AppGroup={AppGroup}\", req.AppGroup);\n    // 根据业务需求：是否需要发送告警、是否需要补偿操作等\n    throw; // 或根据业务需求决定是否抛出异常\n}\n```"
+  },
+  {
+    "title": "代码可读性：重复代码可以提取为方法",
+    "description": "在行677-686、726-735、749-758、774-783、799-808中，存在大量重复的代码逻辑：查找订阅组、提取名称、添加到字典、添加到列表。这些重复代码降低了可维护性。",
+    "severity": "low",
+    "file": "Tongbu.Tui.Inner.Abroad/Handler/InnerHandler.cs",
+    "line": 677,
+    "suggestion": "提取为私有方法以减少重复：\n```csharp\nprivate void ProcessAppleSubscriptionGroup(\n    List<KeyValuePair<string, string>> appleSubscriptionGroupList,\n    string subscriptionGroupKey,\n    int couponKind,\n    List<string> createAppleLocalPriceList) {\n    var sub = appleSubscriptionGroupList.FirstOrDefault(s => s.key == subscriptionGroupKey);\n    if (sub != null) {\n        var idx = sub.value.IndexOf('-');\n        var name = idx >= 0 ? sub.value.Substring(idx + 1) : sub.value;\n        DictionaryHelper.AbroadAddDictionaryKeyValue(\"CouponKindList\", couponKind.ToString(), name, \"\");\n        createAppleLocalPriceList.Add(subscriptionGroupKey);\n    }\n}\n```"
+  }
+]
