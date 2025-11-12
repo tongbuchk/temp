@@ -1,0 +1,66 @@
+[
+  {
+    "title": "🚨 严重错误：枚举值重复定义",
+    "description": "在 BizExceptionEnum.cs 中，`UnfinishedSnapshotsOrRecordingTasks` 和 `KidDeviceNotsupervised` 都被赋值为 39004。这会导致严重的业务逻辑错误，当抛出异常时无法准确识别异常类型。枚举值必须唯一。",
+    "severity": "critical",
+    "file": "Tongbu.Tui.Vip.Abroad.Model/BizExceptionEnum.cs",
+    "line": 23,
+    "suggestion": "将 `KidDeviceNotsupervised` 的枚举值修改为未使用的值，例如 39005：\n```csharp\n[Description(\"kids device not supervised\")]\nKidDeviceNotsupervised = 39005,\n```"
+  },
+  {
+    "title": "🚨 Git提交管理：无关代码变更",
+    "description": "FlashGetKidsBrowserSafetyService.cs 中仅包含空白行的格式调整（第194行），这与提交主题\"ios104开发\"和IsSupervised检查无关。根据TuiGroup规范，代码格式调整应该单独提交，避免在业务逻辑修改中夹带无关变更。",
+    "severity": "high",
+    "file": "Tongbu.Tui.Vip.Abroad.Buss/Service/FlashGetKidsBrowserSafetyService.cs",
+    "line": 194,
+    "suggestion": "1. 将格式调整从当前提交中移除\n2. 如果格式调整必要，应单独提交，commit message: \"代码格式调整：统一空白行规范\"\n3. 当前提交应只包含IsSupervised检查相关的代码"
+  },
+  {
+    "title": "硬编码错误码违反团队规范",
+    "description": "AlertUpdate方法中使用了硬编码的错误码：30001、30002、30003。根据TuiGroup团队规范，应避免硬编码，使用常量代替魔法数字。这些错误码分散在代码中，难以维护和统一管理。",
+    "severity": "high",
+    "file": "Tongbu.Tui.Vip.Abroad.Buss/Service/FlashGetKidsAlertService.cs",
+    "line": 2429,
+    "suggestion": "在 FlashGetKidsStatusCode 或相关常量类中定义错误码常量：\n```csharp\npublic static class KidDeviceErrorCode \n{\n    public const int DeviceNotSupervised = 30001;\n    public const int AlertAlreadyProcessed = 30002;\n    public const int DeviceNotCheckIn = 30003;\n}\n\n// 使用方式：\nthrow new KidBizException(KidDeviceErrorCode.DeviceNotSupervised, \n    \"kids device not supervised\", \n    KidDeviceErrorCode.DeviceNotSupervised);\n```"
+  },
+  {
+    "title": "方法过长影响可维护性",
+    "description": "AlertUpdate 方法长度超过100行（第2377-2481行），包含多个业务逻辑分支，违反单一职责原则。过长的方法难以测试、理解和维护，也增加了出错风险。",
+    "severity": "medium",
+    "file": "Tongbu.Tui.Vip.Abroad.Buss/Service/FlashGetKidsAlertService.cs",
+    "line": 2377,
+    "suggestion": "将方法拆分为更小的职责单一的方法：\n```csharp\n// 1. 提取iOS设备MDM信息验证\nprivate static KidIosMdmInfo ValidateIosDeviceMdm(int accountId, long cDeviceId, KidDeviceTypeEnum deviceType, string appVersion)\n{\n    var tempDeviceId = FlashGetKidsKidHelper.GetDeviceIdForAudio(deviceType, appVersion, accountId, cDeviceId);\n    var mdmInfo = FlashGetKidsKidHelper.GetIosChildMdmInfoForEmmApi(tempDeviceId);\n    \n    if (mdmInfo == null || mdmInfo.Status != 1)\n        throw new KidBizException(DeviceNotCheckIn, \"kids device not checkIn\", DeviceNotCheckIn);\n    \n    if (mdmInfo.IsSupervised != 1)\n        throw new KidBizException(DeviceNotSupervised, \"kids device not supervised\", DeviceNotSupervised);\n    \n    return mdmInfo;\n}\n\n// 2. 在主方法中调用\nif (cDevice.DeviceType == KidDeviceTypeEnum.iOSChild.GetHashCode())\n{\n    mdmInfo = ValidateIosDeviceMdm(accountId, cDeviceId, req.DeviceType, req.AppVersion);\n}\n```"
+  },
+  {
+    "title": "异常消息国际化不一致",
+    "description": "代码中异常消息混用了英文和中文注释。第2429行的注释是中文\"未开启完整模式\"，但异常消息是英文\"kids device not supervised\"。应该使用统一的国际化方案，而不是硬编码消息。",
+    "severity": "low",
+    "file": "Tongbu.Tui.Vip.Abroad.Buss/Service/FlashGetKidsAlertService.cs",
+    "line": 2429,
+    "suggestion": "1. 如果系统支持国际化，应使用多语言资源文件\n2. 或者统一使用英文异常消息，注释可以保留中文\n3. 确保异常消息能够根据用户语言偏好动态返回\n```csharp\nthrow new KidBizException(\n    DeviceNotSupervised, \n    FlashGetKidsTransHelper.GetMessage(\"device.not.supervised\", lang),\n    DeviceNotSupervised\n);\n```"
+  },
+  {
+    "title": "可能存在的性能问题：缺少null检查",
+    "description": "第2419行 `var templateParams = JsonUnifyHelper.DeserializeObject<AlertParamsInfo>(alert?.TemplateParams)` 使用了空值合并运算符，但之后的代码直接使用 templateParams（如第2467、2473行）而没有判空。如果 alert.TemplateParams 为空或反序列化失败，会导致NullReferenceException。",
+    "severity": "medium",
+    "file": "Tongbu.Tui.Vip.Abroad.Buss/Service/FlashGetKidsAlertService.cs",
+    "line": 2419,
+    "suggestion": "添加防御性null检查：\n```csharp\nvar templateParams = JsonUnifyHelper.DeserializeObject<AlertParamsInfo>(alert?.TemplateParams);\nif (templateParams == null)\n{\n    throw new KidBizException(\n        FlashGetKidsStatusCode.InvalidAlertData,\n        $\"Invalid template params for alert {req.Id}\"\n    );\n}\n```"
+  },
+  {
+    "title": "枚举命名拼写错误",
+    "description": "新增的枚举名称 `KidDeviceNotsupervised` 存在拼写错误，应该是 `KidDeviceNotSupervised`（Supervised的S应该大写）。",
+    "severity": "low",
+    "file": "Tongbu.Tui.Vip.Abroad.Model/BizExceptionEnum.cs",
+    "line": 23,
+    "suggestion": "修正枚举名称的拼写：\n```csharp\n[Description(\"kids device not supervised\")]\nKidDeviceNotSupervised = 39005,\n```"
+  },
+  {
+    "title": "提交信息不够具体",
+    "description": "分支名称 'xxj_20251017_ios104开发' 过于笼统，未能清晰说明本次变更的具体内容。根据Git提交规范，提交信息应该说明\"做了什么\"而不是\"什么时间/什么人做的\"。实际变更是添加了iOS设备完整模式（Supervised）的检查。",
+    "severity": "medium",
+    "file": "N/A",
+    "line": 0,
+    "suggestion": "建议使用更具描述性的提交信息，例如：\n- \"feat: 添加iOS设备完整模式(Supervised)检查\"\n- \"fix: 确保iOS Kids设备开启完整模式后才能处理警报\"\n\n提交描述应说明：\n- 为什么需要这个检查（业务背景）\n- 影响范围（AlertUpdate接口）\n- 新增错误码说明"
+  }
+]
