@@ -1,0 +1,114 @@
+[
+  {
+    "title": "严重性能问题：使用.Result阻塞异步调用",
+    "description": "在FollowUpHandler.cs第417行和FollowUpServer.cs第750行，使用Task.Run().Result阻塞异步调用，这会导致线程阻塞、死锁风险和502错误。违反了TuiGroup团队规范中'禁止使用.Result调用异步方法'的要求。",
+    "severity": "critical",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpHandler.cs",
+    "line": 417,
+    "suggestion": "将同步方法改为异步方法，使用await替代.Result：\n```csharp\n// 错误：\nvar riskList = Task.Run(async () => await FollowUpServer.RunDelayRiskCheck(1,0)).Result;\n\n// 正确：\nvar riskList = await FollowUpServer.RunDelayRiskCheck(1, 0);\n```\n同时需要将GetCardList方法改为async Task，并在调用处使用await。"
+  },
+  {
+    "title": "严重性能问题：使用.Result阻塞异步调用",
+    "description": "在FollowUpServer.cs第750行，ResetWorkInfoCache方法中使用Task.Run().Result阻塞异步调用，同样会导致线程阻塞和死锁风险。",
+    "severity": "critical",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 750,
+    "suggestion": "将ResetWorkInfoCache方法改为异步方法，使用await替代.Result：\n```csharp\n// 错误：\nvar riskList = Task.Run(async () => await RunDelayRiskCheck(1, workId)).Result;\n\n// 正确：\nvar riskList = await RunDelayRiskCheck(1, workId);\n```\n需要将ResetWorkInfoCache方法签名改为async Task，并在调用处使用await。"
+  },
+  {
+    "title": "性能问题：缺少ConfigureAwait(false)",
+    "description": "在FollowUpServer.cs的RunDelayRiskCheck方法中，多处异步调用未使用ConfigureAwait(false)，会导致不必要的上下文切换，影响性能。",
+    "severity": "high",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 1862,
+    "suggestion": "在所有异步调用后添加ConfigureAwait(false)：\n```csharp\n// 错误：\nisWorkDay = await WorkingDaysCalculator.IsTodayWorkingDay(today);\nworkingDays = await WorkingDaysCalculator.GetWorkingDaysBetween(today.Date, expectedTestTime.Date);\n\n// 正确：\nisWorkDay = await WorkingDaysCalculator.IsTodayWorkingDay(today).ConfigureAwait(false);\nworkingDays = await WorkingDaysCalculator.GetWorkingDaysBetween(today.Date, expectedTestTime.Date).ConfigureAwait(false);\n```"
+  },
+  {
+    "title": "性能问题：字符串拼接未使用StringBuilder",
+    "description": "在FollowUpServer.cs的RunDelayRiskCheck方法中，使用字符串拼接构建message（第1940-1960行），当风险用户较多时会产生大量临时字符串对象，影响GC性能。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 1940,
+    "suggestion": "使用StringBuilder替代字符串拼接：\n```csharp\n// 错误：\nvar message = $\"任务：[{workName}](...)\";\nmessage += $\"预期提测时间：{expectedTestTime:yyyy-MM-dd}\\n\";\n\n// 正确：\nvar sb = new StringBuilder();\nsb.AppendLine($\"任务：[{workName}](...)\");\nsb.AppendLine($\"预期提测时间：{expectedTestTime:yyyy-MM-dd}\");\nvar message = sb.ToString();\n```"
+  },
+  {
+    "title": "异常处理不规范：catch后仅记录日志",
+    "description": "在FollowUpServer.cs的RunDelayRiskCheck方法中（第1870-1876行），catch异常后仅记录日志，未进行任何处理或通知，可能导致风险检查静默失败。",
+    "severity": "high",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 1870,
+    "suggestion": "根据TuiGroup规范，如果异常需要通知，应使用ApiException并记录日志+钉钉通知；如果确实需要静默处理，应明确说明原因。建议：\n```csharp\ncatch (Exception ex)\n{\n    Env.Logger.Error($\"延期提测风险检查异常: {ex.Message}\\n{ex.StackTrace}\");\n    // 如果风险检查失败影响业务，应发送钉钉通知\n    DingHelper.Push(\"tui_warn\", \"延期提测风险检查异常\", $\"检查失败，可能影响风险预警准确性: {ex.Message}\");\n}\n```"
+  },
+  {
+    "title": "潜在空引用风险：缺少null检查",
+    "description": "在FollowUpHandler.cs第420-424行，使用riskList.Contains()前未检查riskList是否为null，虽然代码中有null检查，但逻辑不够清晰。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpHandler.cs",
+    "line": 420,
+    "suggestion": "使用空值合并运算符或更清晰的null检查：\n```csharp\n// 当前：\nif (riskList != null && riskList.Contains(cards.Works[i].WorkId))\n\n// 建议：\nif (riskList?.Contains(cards.Works[i].WorkId) == true)\n```"
+  },
+  {
+    "title": "代码规范：硬编码数字应使用常量",
+    "description": "在FollowUpServer.cs的RunDelayRiskCheck方法中，多处使用硬编码数字（如7小时、步骤配置ID 2,3,4,5,6,7等），违反了TuiGroup团队规范中'硬编码禁止'的要求。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 1900,
+    "suggestion": "将硬编码数字提取为常量：\n```csharp\nprivate const int HOURS_PER_DAY_PER_PERSON = 7;\nprivate static readonly int[] RISK_CHECK_STEP_CONFIG_IDS = new[] { 2, 3, 4, 5, 6, 7 };\nprivate const int STEP_CONFIG_ID_4 = 4;\nprivate const int STEP_CONFIG_ID_5 = 5;\nprivate const int STEP_CONFIG_ID_6 = 6;\n```"
+  },
+  {
+    "title": "性能问题：数据库查询可能优化",
+    "description": "在FollowUpServer.cs的RunDelayRiskCheck方法中，SQL查询使用了多个INNER JOIN和子查询，当数据量大时可能影响性能。建议检查是否有合适的索引。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 1890,
+    "suggestion": "1. 确认work_manager、work_manager_step、work_manager_step_checklist等表的关键字段（如is_deleted、status、process_stage）是否有索引；\n2. 考虑将复杂查询拆分为多个简单查询，使用批量查询优化；\n3. 如果数据量大，考虑添加缓存机制。"
+  },
+  {
+    "title": "代码规范：未使用的using语句",
+    "description": "在FollowUpServer.cs文件开头，添加了多个using语句（如Org.BouncyCastle.Ocsp、TencentCloud.Tci.V20190318.Models），但这些命名空间在代码中似乎未被使用。",
+    "severity": "low",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 1,
+    "suggestion": "移除未使用的using语句，保持代码整洁。如果这些using是为未来功能准备的，应添加注释说明。"
+  },
+  {
+    "title": "潜在逻辑错误：条件判断可能有问题",
+    "description": "在ZendeskHandler.cs第2115行，条件从`lastComments.Count >= 3`改为`lastComments.Count < 3`，这个逻辑反转可能导致业务逻辑错误，需要确认是否符合预期。",
+    "severity": "high",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/Zendesk/ZendeskHandler.cs",
+    "line": 2115,
+    "suggestion": "仔细审查这个逻辑变更，确认是否符合业务需求。如果确实需要反转逻辑，应在代码注释中明确说明原因。"
+  },
+  {
+    "title": "性能问题：限流逻辑可能影响性能",
+    "description": "在ZendeskHelper.cs的ExecZendeskCommentWorkFlow方法中，添加了基于分钟的时间戳字符串比较进行限流（第256-266行），这种方式在高并发下可能不够精确，且字符串比较有性能开销。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/Zendesk/ZendeskHelper.cs",
+    "line": 256,
+    "suggestion": "使用更高效的限流方式：\n```csharp\n// 使用DateTime的分钟级别比较\nvar currentMinute = DateTime.Now.ToString(\"yyyy-MM-dd HH:mm\");\nif (LimitInfo.TimeMinuteText != currentMinute)\n{\n    LimitInfo.TimeMinuteText = currentMinute;\n    LimitInfo.Count = 1;\n}\nelse\n{\n    LimitInfo.Count++;\n}\n\n// 或者使用更精确的时间戳（秒级）\nvar currentMinuteTimestamp = (long)(DateTime.Now - new DateTime(1970, 1, 1)).TotalSeconds / 60;\n```\n考虑使用专门的限流库如AspNetCoreRateLimit。"
+  },
+  {
+    "title": "代码规范：异常类型使用",
+    "description": "在ZendeskHelper.cs第271行，限流时抛出BizException，根据TuiGroup规范，新接口应优先使用ApiException（会记录日志+钉钉通知）。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/Zendesk/ZendeskHelper.cs",
+    "line": 271,
+    "suggestion": "将BizException改为ApiException，以便记录日志和发送钉钉通知：\n```csharp\n// 当前：\nthrow new BizException(500, \"Update ZendeskComment:PerMinuteZendeskApiLimitMax\");\n\n// 建议：\nthrow new ApiException(500, \"Update ZendeskComment:PerMinuteZendeskApiLimitMax\");\n```"
+  },
+  {
+    "title": "防御性编程：缺少参数验证",
+    "description": "在FollowUpHandler.cs的UpdateStepProcessStage方法中（第860行），虽然验证了ProcessStage的值，但未验证StepId是否大于0，可能存在无效参数风险。",
+    "severity": "low",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpHandler.cs",
+    "line": 860,
+    "suggestion": "添加StepId参数验证：\n```csharp\nif (req.StepId <= 0)\n{\n    throw new ApiException(-1, \"步骤ID无效\");\n}\n```"
+  },
+  {
+    "title": "代码质量：SQL注入风险已避免",
+    "description": "代码中使用了参数化查询，避免了SQL注入风险，这是正确的做法。但需要确认所有新增的SQL查询都使用了参数化。",
+    "severity": "info",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 1890,
+    "suggestion": "继续保持使用参数化查询的良好实践。"
+  }
+]
