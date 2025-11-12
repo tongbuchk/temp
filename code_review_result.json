@@ -1,0 +1,122 @@
+[
+  {
+    "title": "严重性能问题：使用.Result阻塞异步调用",
+    "description": "在FollowUpHandler.cs第417行和FollowUpServer.cs第750行，使用Task.Run().Result阻塞异步调用，这会导致线程阻塞、死锁风险和502错误。这是TuiGroup团队规范严格禁止的做法。",
+    "severity": "critical",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpHandler.cs",
+    "line": 417,
+    "suggestion": "将方法改为async Task，使用await替代.Result：\nvar riskList = await FollowUpServer.RunDelayRiskCheck(1, 0);\n如果调用方无法改为async，考虑使用后台任务或消息队列处理。"
+  },
+  {
+    "title": "严重性能问题：使用.Result阻塞异步调用",
+    "description": "在FollowUpServer.cs第750行，ResetWorkInfoCache方法中同样使用Task.Run().Result阻塞异步调用。",
+    "severity": "critical",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 750,
+    "suggestion": "将ResetWorkInfoCache方法改为async Task，使用await替代.Result。"
+  },
+  {
+    "title": "Fire and Forget模式导致异常被吞没",
+    "description": "在FollowUpHandler.cs第799行，使用`_ = MySocketHelper.NoticeAll(...)`忽略异步调用结果，异常被吞没无法追踪。虽然外层有try-catch，但Fire and Forget模式不符合TuiGroup规范。",
+    "severity": "high",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpHandler.cs",
+    "line": 799,
+    "suggestion": "改为等待异步操作完成：\nawait MySocketHelper.NoticeAll(...);\n或者使用Task.Run包装并处理异常：\nTask.Run(async () => {\n    try {\n        await MySocketHelper.NoticeAll(...);\n    } catch (Exception ex) {\n        Logger.Error(ex, \"Socket推送失败\");\n    }\n});"
+  },
+  {
+    "title": "性能问题：GetWorkingDaysBetween方法存在N次异步调用",
+    "description": "在WorkingDaysCalculator.cs的GetWorkingDaysBetween方法中，使用while循环逐日调用IsTodayWorkingDay，如果日期跨度大（如30天），会产生30次异步API调用，严重影响性能。",
+    "severity": "high",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Util/WorkingDaysCalculator.cs",
+    "line": 88,
+    "suggestion": "优化为批量查询或缓存机制：\n1. 实现批量查询接口，一次获取多个日期的工作日状态\n2. 使用缓存存储已查询的日期结果\n3. 对于连续日期，可以优化算法减少API调用次数"
+  },
+  {
+    "title": "线程安全问题：限流逻辑非线程安全",
+    "description": "在ZendeskHelper.cs第256-264行，LimitInfo的Count和TimeMinuteText字段在多线程环境下存在竞态条件，可能导致限流失效。",
+    "severity": "high",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/Zendesk/ZendeskHelper.cs",
+    "line": 256,
+    "suggestion": "使用Interlocked或lock确保线程安全：\nprivate static readonly object _limitLock = new object();\nlock (_limitLock) {\n    if (LimitInfo.TimeMinuteText == DateTime.Now.ToString(\"yyyy-MM-dd HH:mm\")) {\n        LimitInfo.Count++;\n    } else {\n        LimitInfo.TimeMinuteText = DateTime.Now.ToString(\"yyyy-MM-dd HH:mm\");\n        LimitInfo.Count = 1;\n    }\n}\n或者使用ConcurrentDictionary实现无锁限流。"
+  },
+  {
+    "title": "性能问题：HttpClient未使用单例模式",
+    "description": "在LanguageHelper.cs的AutoFormatCorrect方法中，每次调用都创建新的HttpClient实例，可能导致端口耗尽和性能问题。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/Language/Helper/LanguageHelper.cs",
+    "line": 1140,
+    "suggestion": "使用静态HttpClient实例或IHttpClientFactory：\nprivate static readonly HttpClient _httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(300) };\n或者注入IHttpClientFactory使用工厂模式创建。"
+  },
+  {
+    "title": "潜在空引用异常：projects.Find可能返回null",
+    "description": "在FollowUpServer.cs第1190行和第1366行，使用projects.Find()可能返回null，直接访问.Name属性会导致NullReferenceException。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 1190,
+    "suggestion": "添加空值检查：\nvar project = projects.Find(t => t.Project == card.Project);\nvar projectName = project?.Name ?? \"未知项目\";\n或者使用FirstOrDefault并处理null情况。"
+  },
+  {
+    "title": "潜在空引用异常：ticket.EmailContentCn可能为null",
+    "description": "在ZendeskHandler.cs第2101行，使用ticket.EmailContentCn.Contains()时，如果EmailContentCn为null会导致NullReferenceException。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/Zendesk/ZendeskHandler.cs",
+    "line": 2101,
+    "suggestion": "添加空值检查：\nif (!transedCommentIds.Contains(c.id.ToString()) && !string.IsNullOrWhiteSpace(c.body) && !string.IsNullOrEmpty(ticket.EmailContentCn) && !ticket.EmailContentCn.Contains(c.id.ToString()))"
+  },
+  {
+    "title": "硬编码问题：魔法数字85",
+    "description": "在CentralControlHandler.cs第721行，CPU使用率阈值85是硬编码的，应该使用常量或配置项。",
+    "severity": "low",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/CentralControl/CentralControlHandler.cs",
+    "line": 721,
+    "suggestion": "提取为常量：\nprivate const int CPU_USAGE_THRESHOLD = 85;\n或者从配置中读取。"
+  },
+  {
+    "title": "硬编码问题：魔法数字2,3,4,5,6,7",
+    "description": "在FollowUpServer.cs第1903行，步骤配置ID列表(2,3,4,5,6,7)是硬编码的，应该使用常量或配置。",
+    "severity": "low",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 1903,
+    "suggestion": "提取为常量数组：\nprivate static readonly int[] PRE_TEST_STEP_CONFIG_IDS = { 2, 3, 4, 5, 6, 7 };\n或者从数据库配置表读取。"
+  },
+  {
+    "title": "硬编码问题：每人每天7小时",
+    "description": "在FollowUpServer.cs第1950行，每人每天可处理7小时是硬编码的，应该使用常量或配置。",
+    "severity": "low",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 1950,
+    "suggestion": "提取为常量：\nprivate const decimal HOURS_PER_PERSON_PER_DAY = 7m;\n或者从配置中读取，支持不同角色不同工时配置。"
+  },
+  {
+    "title": "代码规范：未使用的using引用",
+    "description": "在FollowUpServer.cs中，添加了Org.BouncyCastle.Ocsp和TencentCloud.Tci.V20190318.Models的using，但代码中未使用这些命名空间。",
+    "severity": "low",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 1,
+    "suggestion": "删除未使用的using引用，保持代码整洁。"
+  },
+  {
+    "title": "异常处理：BizException使用不当",
+    "description": "在ZendeskHelper.cs第268行，使用BizException而不是ApiException，根据TuiGroup规范，新接口应统一使用ApiException以记录日志和钉钉通知。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/Zendesk/ZendeskHelper.cs",
+    "line": 268,
+    "suggestion": "改为使用ApiException：\nthrow new ApiException(500, \"Update ZendeskComment:PerMinuteZendeskApiLimitMax\");\n除非确定不需要日志和钉钉通知。"
+  },
+  {
+    "title": "性能问题：字符串拼接使用+操作符",
+    "description": "在FollowUpServer.cs的RunDelayRiskCheck方法中，多处使用字符串+操作符拼接消息，当消息较长时性能较差。",
+    "severity": "low",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 1975,
+    "suggestion": "使用StringBuilder优化字符串拼接：\nvar sb = new StringBuilder();\nsb.Append(\"任务：[\").Append(workName)...\nstring message = sb.ToString();"
+  },
+  {
+    "title": "防御性编程：缺少参数验证",
+    "description": "在FollowUpHandler.cs的UpdateStepProcessStage方法中，虽然验证了ProcessStage的值，但未验证StepId是否大于0。",
+    "severity": "low",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpHandler.cs",
+    "line": 860,
+    "suggestion": "添加参数验证：\nif (req.StepId <= 0)\n    throw new ApiException(-1, \"步骤ID无效\");"
+  }
+]
