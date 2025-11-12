@@ -1,0 +1,122 @@
+[
+  {
+    "title": "严重性能问题：使用.Result阻塞异步调用",
+    "description": "在FollowUpHandler.cs第417行和FollowUpServer.cs第750行使用了Task.Run(async () => await ...).Result模式，这会导致线程阻塞，可能引发死锁和502错误。违反了TuiGroup团队规范中'禁止使用.Result调用异步方法'的规定。",
+    "severity": "critical",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpHandler.cs",
+    "line": 417,
+    "suggestion": "将同步方法改为异步方法，使用await直接调用：var riskList = await FollowUpServer.RunDelayRiskCheck(1, 0); 同时需要将GetCardList方法改为async Task。"
+  },
+  {
+    "title": "严重性能问题：使用.Result阻塞异步调用",
+    "description": "在FollowUpServer.cs第750行使用了Task.Run(async () => await RunDelayRiskCheck(1, workId)).Result，这会导致线程阻塞，可能引发死锁和502错误。违反了TuiGroup团队规范。",
+    "severity": "critical",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 750,
+    "suggestion": "将ResetWorkInfoCache方法改为async Task，使用await直接调用：var riskList = await RunDelayRiskCheck(1, workId);"
+  },
+  {
+    "title": "性能问题：字符串拼接可能优化",
+    "description": "在CentralControlHandler.cs第720-721行和724行使用string.Join进行SQL字符串拼接，虽然使用了参数化查询，但字符串拼接方式可以进一步优化。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/CentralControl/CentralControlHandler.cs",
+    "line": 720,
+    "suggestion": "考虑使用StringBuilder或直接使用参数化查询的IN子句，避免字符串拼接。"
+  },
+  {
+    "title": "异常处理：Fire and Forget模式",
+    "description": "在FollowUpHandler.cs第800行使用了_ = MySocketHelper.NoticeAll(...)，这是Fire and Forget模式，异常会被吞没，无法追踪。违反了TuiGroup规范。",
+    "severity": "high",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpHandler.cs",
+    "line": 800,
+    "suggestion": "应该使用try-catch包裹并记录日志，或者使用Task.Run并处理异常：Task.Run(async () => { try { await MySocketHelper.NoticeAll(...); } catch (Exception ex) { Logger.Error(ex, \"Socket推送失败\"); } });"
+  },
+  {
+    "title": "代码规范：缺少ConfigureAwait(false)",
+    "description": "在FollowUpServer.cs的RunDelayRiskCheck方法中，多处异步调用未使用ConfigureAwait(false)，可能导致不必要的上下文切换，影响性能。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 1862,
+    "suggestion": "在异步调用后添加ConfigureAwait(false)，例如：await WorkingDaysCalculator.IsTodayWorkingDay(today).ConfigureAwait(false);"
+  },
+  {
+    "title": "性能问题：可能的N+1查询",
+    "description": "在FollowUpServer.cs的GetCardList和GetUserCardList方法中，对每个card都调用了GetProjectName查找项目名称，如果cards数量较多，可能导致性能问题。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 1190,
+    "suggestion": "应该一次性获取所有项目信息，然后在内存中查找，避免重复查询。"
+  },
+  {
+    "title": "代码规范：硬编码值",
+    "description": "在FollowUpServer.cs第1910行硬编码了数字7（每人每天可处理7小时），应该使用常量定义。",
+    "severity": "low",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 1910,
+    "suggestion": "定义常量：private const decimal AvailableHoursPerPersonPerDay = 7; 然后使用该常量。"
+  },
+  {
+    "title": "代码规范：硬编码值",
+    "description": "在FollowUpServer.cs第1890行硬编码了步骤配置ID列表(2,3,4,5,6,7)，应该使用常量或配置。",
+    "severity": "low",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 1890,
+    "suggestion": "定义常量数组：private static readonly int[] PreTestStepConfigIds = { 2, 3, 4, 5, 6, 7 }; 然后使用该常量。"
+  },
+  {
+    "title": "异常处理：异常信息不够详细",
+    "description": "在FollowUpServer.cs的RunDelayRiskCheck方法中，catch块只记录了异常消息，没有记录完整的堆栈信息，不利于问题排查。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 2020,
+    "suggestion": "使用Env.Logger.Error(ex, \"延期提测风险检查异常\")记录完整异常信息，包括堆栈。"
+  },
+  {
+    "title": "代码规范：未使用的using",
+    "description": "在FollowUpServer.cs第3行引入了Org.BouncyCastle.Ocsp和TencentCloud.Tci.V20190318.Models，但在代码中未使用，应该移除。",
+    "severity": "low",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 3,
+    "suggestion": "移除未使用的using语句：using Org.BouncyCastle.Ocsp; 和 using TencentCloud.Tci.V20190318.Models;"
+  },
+  {
+    "title": "性能问题：字符串操作可以优化",
+    "description": "在ZendeskHelper.cs第2471行使用了Substring操作处理翻译结果，如果字符串较长，可以考虑使用更高效的方式。",
+    "severity": "low",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/Zendesk/ZendeskHelper.cs",
+    "line": 2471,
+    "suggestion": "考虑使用Span<char>或StringBuilder进行字符串操作，提高性能。"
+  },
+  {
+    "title": "代码规范：限流逻辑可以优化",
+    "description": "在ZendeskHelper.cs第256-267行实现了简单的限流逻辑，但使用字符串比较时间可能不够精确，且LimitInfo是静态变量，可能存在线程安全问题。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/Zendesk/ZendeskHelper.cs",
+    "line": 256,
+    "suggestion": "使用Interlocked或ConcurrentDictionary实现线程安全的限流，使用DateTime比较而非字符串比较。"
+  },
+  {
+    "title": "代码规范：魔法数字",
+    "description": "在FollowUpHandler.cs第860行硬编码了数字1和2作为ProcessStage的有效值，应该使用枚举或常量。",
+    "severity": "low",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpHandler.cs",
+    "line": 860,
+    "suggestion": "定义枚举：public enum ProcessStage { PreTest = 1, PostTest = 2 } 然后使用枚举值进行判断。"
+  },
+  {
+    "title": "代码质量：SQL注入风险检查",
+    "description": "在CentralControlHandler.cs中虽然使用了参数化查询，但SQL字符串是通过string.Join拼接的，需要确保RestartServerList和monitorSpecifyServerList中的值已经过验证，防止SQL注入。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/CentralControl/CentralControlHandler.cs",
+    "line": 720,
+    "suggestion": "确保RestartServerList和monitorSpecifyServerList中的IP地址已经过验证，或者使用参数化查询的IN子句。"
+  },
+  {
+    "title": "性能问题：可能的多次数据库查询",
+    "description": "在InnerServer.cs第201行，在循环中可能多次查询数据库获取charge_person，如果noticeList数量较多，可能导致性能问题。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/Inner/Server/InnerServer.cs",
+    "line": 201,
+    "suggestion": "应该一次性批量查询所有需要的charge_person信息，然后在内存中查找，避免N+1查询问题。"
+  }
+]
