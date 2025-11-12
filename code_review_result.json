@@ -1,0 +1,114 @@
+[
+  {
+    "title": "严重性能问题：使用.Result阻塞异步调用",
+    "description": "在FollowUpHandler.cs第417行和FollowUpServer.cs第750行，使用Task.Run().Result阻塞异步调用，这会导致线程阻塞、死锁风险和502错误。违反TuiGroup团队规范中'禁止使用.Result调用异步方法'的要求。",
+    "severity": "critical",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpHandler.cs",
+    "line": 417,
+    "suggestion": "将方法改为async Task，使用await调用：var riskList = await FollowUpServer.RunDelayRiskCheck(1, 0); 如果调用方无法改为异步，考虑使用同步版本或重新设计调用链。"
+  },
+  {
+    "title": "严重性能问题：使用.Result阻塞异步调用",
+    "description": "在FollowUpServer.cs第750行，使用Task.Run(async () => await RunDelayRiskCheck(1, workId)).Result阻塞异步调用，这会导致线程阻塞和性能问题。",
+    "severity": "critical",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 750,
+    "suggestion": "将ResetWorkInfoCache方法改为async Task，使用await调用：var riskList = await RunDelayRiskCheck(1, workId);"
+  },
+  {
+    "title": "性能问题：可能的N+1查询",
+    "description": "在FollowUpServer.cs的RunDelayRiskCheck方法中，虽然使用了GROUP BY，但后续对每个taskGroup进行循环处理，如果taskGroups数量很大，可能导致性能问题。",
+    "severity": "high",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 1857,
+    "suggestion": "考虑批量处理或使用并行处理（Task.WhenAll）来优化多个任务组的处理，但要注意控制并发数量避免数据库压力过大。"
+  },
+  {
+    "title": "性能问题：字符串拼接可能低效",
+    "description": "在RunDelayRiskCheck方法中，使用字符串拼接构建message，如果riskUsers数量很大，可能导致多次字符串对象创建。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 1950,
+    "suggestion": "使用StringBuilder来构建长字符串，特别是当riskUsers.Count可能较大时：var sb = new StringBuilder(); sb.Append(...); message = sb.ToString();"
+  },
+  {
+    "title": "异常处理不规范：catch后无意义处理",
+    "description": "在FollowUpHandler.cs的UpdateWorkExpectedTestTime方法中，try-catch仅用于记录日志，如果Socket推送失败，异常被吞没但业务继续执行，可能导致数据不一致。",
+    "severity": "high",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpHandler.cs",
+    "line": 783,
+    "suggestion": "根据业务需求决定：如果Socket推送失败不影响核心业务，保持现状但添加更详细的日志；如果重要，考虑重试机制或使用后台任务队列确保最终一致性。"
+  },
+  {
+    "title": "防御性编程：缺少参数验证",
+    "description": "在UpdateStepProcessStage方法中，虽然验证了ProcessStage的值，但缺少对StepId和GroupType的验证，可能导致SQL注入或数据错误。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpHandler.cs",
+    "line": 857,
+    "suggestion": "添加参数验证：if (req.StepId <= 0) throw new ApiException(-1, \"步骤ID无效\"); 确保使用参数化查询（已使用，继续保持）。"
+  },
+  {
+    "title": "代码规范：硬编码值",
+    "description": "在RunDelayRiskCheck方法中，硬编码了多个魔法数字：7（每天可处理小时数）、步骤配置ID（2,3,4,5,6,7）、stepconfig判断值（4,5,6）等。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 1857,
+    "suggestion": "将硬编码值提取为常量：private const int HOURS_PER_DAY = 7; private static readonly int[] PRE_TEST_STEP_CONFIG_IDS = {2,3,4,5,6,7}; private const int STEP_CONFIG_DESIGN = 4; private const int STEP_CONFIG_DEVELOP = 5; private const int STEP_CONFIG_TEST = 6;"
+  },
+  {
+    "title": "性能问题：工作日计算可能频繁调用API",
+    "description": "在GetWorkingDaysBetween方法中，对每个日期都调用IsTodayWorkingDay，如果日期范围很大，会导致大量API调用，可能影响性能。",
+    "severity": "high",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Util/WorkingDaysCalculator.cs",
+    "line": 71,
+    "suggestion": "考虑缓存工作日计算结果，或者批量获取日期范围内的工作日信息，减少API调用次数。可以添加一个GetWorkingDaysInRange方法，一次性获取整个范围的工作日信息。"
+  },
+  {
+    "title": "代码质量问题：未使用的using",
+    "description": "在FollowUpServer.cs中添加了using TencentCloud.Tci.V20190318.Models，但代码中似乎未使用该命名空间。",
+    "severity": "low",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 1,
+    "suggestion": "检查并移除未使用的using语句，保持代码整洁。"
+  },
+  {
+    "title": "异常处理：缺少对API调用失败的处理",
+    "description": "在LanguageHelper.cs的AutoFormatCorrect方法中，HttpClient调用可能失败，虽然有Timeout设置，但缺少对网络异常、HTTP错误状态码等的详细处理。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/Language/Helper/LanguageHelper.cs",
+    "line": 1133,
+    "suggestion": "添加更完善的异常处理：检查response.IsSuccessStatusCode，处理HttpRequestException、TaskCanceledException等，并记录详细的错误信息。"
+  },
+  {
+    "title": "性能问题：字符串操作可能低效",
+    "description": "在ZendeskHelper.cs的GetEmailTransDataByComment方法中，使用IndexOf和Substring进行字符串处理，如果Translation很长，可能有性能影响。",
+    "severity": "low",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/Zendesk/ZendeskHelper.cs",
+    "line": 2458,
+    "suggestion": "考虑使用更高效的字符串处理方法，或者如果性能不是瓶颈，保持现状。可以添加边界检查避免IndexOutOfRangeException。"
+  },
+  {
+    "title": "代码规范：方法参数顺序不一致",
+    "description": "RunDelayRiskCheck方法在不同文件中的参数顺序不一致：InnerHandler.cs中是(specifyWorkId, isNotSend)，而FollowUpServer.cs中是(isNotSend, specifyWorkId)，容易导致调用错误。",
+    "severity": "high",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/Inner/InnerHandler.cs",
+    "line": 424,
+    "suggestion": "统一参数顺序，建议使用命名参数调用以避免错误：await FollowUpServer.RunDelayRiskCheck(isNotSend: 1, specifyWorkId: 0); 或者调整方法签名使参数顺序一致。"
+  },
+  {
+    "title": "防御性编程：SQL注入风险检查",
+    "description": "在CentralControlHandler.cs的HeartbeatNoticeDingDing方法中，虽然使用了参数化查询，但ipList和serverList是通过字符串拼接构建的，如果RestartServerList或monitorSpecifyServerList包含恶意输入，可能有风险。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/CentralControl/CentralControlHandler.cs",
+    "line": 716,
+    "suggestion": "虽然当前代码看起来安全（从配置获取），但建议验证IP地址格式，或使用参数化查询的IN子句替代字符串拼接。确保RestartServerList和monitorSpecifyServerList的来源可信。"
+  },
+  {
+    "title": "性能问题：可能的多次数据库查询",
+    "description": "在InnerServer.cs的SendWorkStartNotice方法中，如果noticeList很大，在循环中可能多次查询数据库获取chargePerson，存在N+1查询风险。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/Inner/Server/InnerServer.cs",
+    "line": 195,
+    "suggestion": "如果noticeList可能包含多个相同RoleId，考虑先批量查询所有需要的chargePerson，使用Dictionary缓存，避免重复查询。"
+  }
+]
