@@ -1,0 +1,98 @@
+[
+  {
+    "title": "严重性能问题：使用.Result阻塞异步调用导致死锁风险",
+    "description": "在FollowUpHandler.cs第417行和FollowUpServer.cs第750行，使用Task.Run(...).Result阻塞异步调用。这会导致线程阻塞、死锁风险，并可能引发502错误。违反了TuiGroup团队规范中'禁止使用.Result调用异步方法'的要求。",
+    "severity": "critical",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpHandler.cs",
+    "line": 417,
+    "suggestion": "将var riskList = Task.Run(async () => await FollowUpServer.RunDelayRiskCheck(1,0)).Result; 改为 var riskList = await FollowUpServer.RunDelayRiskCheck(1, 0); 并确保调用方法也是async Task。"
+  },
+  {
+    "title": "严重性能问题：使用.Result阻塞异步调用导致死锁风险",
+    "description": "在FollowUpServer.cs第750行，同样使用Task.Run(...).Result阻塞异步调用。这会导致线程阻塞、死锁风险，并可能引发502错误。",
+    "severity": "critical",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 750,
+    "suggestion": "将var riskList = Task.Run(async () => await RunDelayRiskCheck(1, workId)).Result; 改为 var riskList = await RunDelayRiskCheck(1, workId); 并确保ResetWorkInfoCache方法签名支持async/await。"
+  },
+  {
+    "title": "异步调用异常被忽略：使用_=忽略异步操作",
+    "description": "在FollowUpHandler.cs的UpdateWorkExpectedTestTime方法中，使用_ = MySocketHelper.NoticeAll(...)忽略异步调用。这会导致异常被吞没，无法追踪操作失败，违反了TuiGroup团队规范。",
+    "severity": "high",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpHandler.cs",
+    "line": 797,
+    "suggestion": "应该使用try-catch包裹并等待异步操作：try { await MySocketHelper.NoticeAll(...); } catch (Exception ex) { Logger.Error(ex, \"Socket推送失败\"); } 或者使用Task.Run包裹后台任务并处理异常。"
+  },
+  {
+    "title": "性能问题：循环中重复调用GetProjectName",
+    "description": "在FollowUpServer.cs的GetCardList方法中，GetProjectName(1)在循环外调用一次，但在循环内可能还需要查询。虽然已优化，但建议检查是否可以在更外层缓存项目名称映射，避免重复查询。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 417,
+    "suggestion": "考虑在方法开始处缓存项目名称映射，避免在循环中重复查询数据库。"
+  },
+  {
+    "title": "代码清理：未使用的using语句",
+    "description": "在FollowUpServer.cs文件顶部引入了未使用的命名空间：Org.BouncyCastle.Ocsp和TencentCloud.Tci.V20190318.Models。这些未使用的using应该被移除以提高代码整洁度。",
+    "severity": "low",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 1,
+    "suggestion": "移除未使用的using语句：using Org.BouncyCastle.Ocsp; 和 using TencentCloud.Tci.V20190318.Models;"
+  },
+  {
+    "title": "硬编码：魔法数字应使用常量",
+    "description": "在FollowUpServer.cs的RunDelayRiskCheck方法中，存在多处硬编码：7（每天工作小时数）、步骤配置ID(2,3,4,5,6,7)等。违反了TuiGroup团队规范中禁止硬编码的要求。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 1920,
+    "suggestion": "定义常量：private const decimal AvailableHoursPerDay = 7; 和 private static readonly int[] PreTestStepConfigIds = { 2, 3, 4, 5, 6, 7 }; 并在代码中使用这些常量。"
+  },
+  {
+    "title": "防御性编程：参数校验不完整",
+    "description": "在FollowUpHandler.cs的UpdateStepProcessStage方法中，只校验了ProcessStage是否为1或2，但没有校验StepId是否有效（如>0）。缺少对关键参数的防御性检查。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpHandler.cs",
+    "line": 860,
+    "suggestion": "添加参数校验：if (req.StepId <= 0) throw new ApiException(-1, \"步骤ID无效\"); 确保StepId是有效的正整数。"
+  },
+  {
+    "title": "数据库性能：复杂SQL查询可能影响性能",
+    "description": "在FollowUpServer.cs的RunDelayRiskCheck方法中，SQL查询包含多个JOIN、子查询和GROUP BY操作，对于大量数据可能影响性能。建议检查是否需要添加索引或优化查询结构。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 1860,
+    "suggestion": "检查相关表的索引是否完善，特别是work_manager_step_work、work_manager_step、work_manager_step_user等表的关联字段。考虑是否需要添加复合索引优化查询性能。"
+  },
+  {
+    "title": "异常处理：RunDelayRiskCheck方法异常处理不够细致",
+    "description": "在FollowUpServer.cs的RunDelayRiskCheck方法中，工作日计算的异常处理使用了简单的fallback逻辑，但可能掩盖真实的API调用问题。建议记录更详细的异常信息。",
+    "severity": "low",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 1920,
+    "suggestion": "在catch块中记录更详细的异常信息，包括任务ID、日期范围等上下文信息，便于问题排查。"
+  },
+  {
+    "title": "代码规范：字符串拼接格式不一致",
+    "description": "在FollowUpServer.cs第246行，ShareUrl2的格式从'{shortLink}? ({work.WorkId}){work.Title}\\n\\n'改为'{shortLink}? [{project}]({work.WorkId}){work.Title}\\n\\n'，格式变化但可能影响现有功能。需要确认这是预期变更。",
+    "severity": "info",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 246,
+    "suggestion": "确认ShareUrl2格式变更是否会影响下游系统或用户展示。如果这是新功能，建议添加注释说明格式变更原因。"
+  },
+  {
+    "title": "性能优化：RunDelayRiskCheck方法中的循环可以优化",
+    "description": "在RunDelayRiskCheck方法中，对每个任务组都调用GetWorkingDaysBetween计算工作日，如果任务数量较多，这些异步调用可能影响性能。考虑是否可以批量处理或缓存结果。",
+    "severity": "low",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/FollowUp/FollowUpServer.cs",
+    "line": 1930,
+    "suggestion": "如果多个任务的预期提测时间相同，可以考虑缓存工作日计算结果，避免重复计算。"
+  },
+  {
+    "title": "防御性编程：ZendeskHelper中缺少空值检查",
+    "description": "在ZendeskHelper.cs的ExecZendeskCommentWorkFlow方法中，修改了返回类型但可能缺少对jsonResult.Data的空值检查，如果API返回异常可能导致NullReferenceException。",
+    "severity": "medium",
+    "file": "Tongbu.Tool.Base/Tongbu.Tool.Base.Api/Zendesk/ZendeskHelper.cs",
+    "line": 308,
+    "suggestion": "添加空值检查：if (jsonResult.Data?.Result == null) throw new ApiException(500, \"工作流返回数据异常\"); 确保数据完整性。"
+  }
+]
